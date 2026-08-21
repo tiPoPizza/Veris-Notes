@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* Disable mobile browser text selection action popup (Cut/Copy bar) and customize selection appearance */
+[contenteditable="true"],
+.note-editor-content {
+  -webkit-touch-callout: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* In-Editor Search Highlighting (CSS Custom Highlight API) */
+::highlight(note-search-match) {
+  background-color: var(--search-highlight-bg, #facc15);
+  color: var(--search-highlight-text, #000000);
+}
+
+::highlight(note-search-active) {
+  background-color: var(--search-active-bg, #f97316);
+  color: var(--search-active-text, #ffffff);
+  font-weight: 700;
+}
+
