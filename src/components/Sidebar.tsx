@@ -71,6 +71,9 @@ export const Sidebar: React.FC = () => {
     openCreateKanbanColumnModal,
     openEditKanbanCardModal,
     events,
+    deletedNotes,
+    openTrash,
+    isPrivateLocked,
   } = useApp();
 
   const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({});
@@ -123,16 +126,20 @@ export const Sidebar: React.FC = () => {
     }));
   };
 
-  // Helper to get notes for a specific block (excluding private notes)
+  const isPrivateSpace =
+    (viewMode === 'private' && !isPrivateLocked) ||
+    (viewMode === 'editor' && Boolean(notes.find(n => n.id === activeNoteId)?.isPrivate));
+
+  // Helper to get notes for a specific block (filtering for private space appropriately)
   const getNotesForBlock = (block: NoteBlock) => {
-    const publicNotes = notes.filter(n => !n.isPrivate);
+    const targetNotes = isPrivateSpace ? notes.filter(n => n.isPrivate) : notes.filter(n => !n.isPrivate);
     if (block.id === 'pinned' || block.type === 'pinned') {
-      return publicNotes.filter(n => n.pinned);
+      return targetNotes.filter(n => n.pinned);
     }
     if (block.id === 'general' || block.type === 'general') {
-      return publicNotes.filter(n => !n.pinned && (!n.blockId || n.blockId === 'general'));
+      return targetNotes.filter(n => !n.pinned && (!n.blockId || n.blockId === 'general'));
     }
-    return publicNotes.filter(n => !n.pinned && n.blockId === block.id);
+    return targetNotes.filter(n => !n.pinned && n.blockId === block.id);
   };
 
   return (
@@ -167,7 +174,9 @@ export const Sidebar: React.FC = () => {
           <div className="flex items-center justify-between pt-1 px-1">
             <div>
               <h2 className="text-xl font-bold tracking-tight">
-                {viewMode === 'tasks'
+                {isPrivateSpace
+                  ? 'Приват'
+                  : viewMode === 'tasks'
                   ? t('tasks')
                   : viewMode === 'kanban'
                   ? 'Канбан'
@@ -409,7 +418,7 @@ export const Sidebar: React.FC = () => {
                     label: 'Корзина',
                     icon: Trash2,
                     onClick: () => {
-                      setViewMode('trash');
+                      openTrash(isPrivateSpace ? 'private' : 'public');
                       setShowActionTiles(false);
                     },
                   },
@@ -548,10 +557,17 @@ export const Sidebar: React.FC = () => {
                         openCreateTaskListModal();
                       } else if (viewMode === 'kanban') {
                         openCreateKanbanCardModal();
+                      } else if (isPrivateSpace) {
+                        const newNote = createNote();
+                        updateNote(newNote.id, { isPrivate: true });
+                        setActiveNoteId(newNote.id);
+                        setViewMode('editor');
+                        setSidebarOpen(false);
                       } else {
                         const newNote = createNote();
                         setActiveNoteId(newNote.id);
                         setViewMode('editor');
+                        setSidebarOpen(false);
                       }
                     }}
                     className="flex-1 flex items-center gap-2 p-3.5 hover:opacity-90 active:scale-98 transition cursor-pointer text-left truncate"
@@ -604,9 +620,13 @@ export const Sidebar: React.FC = () => {
                     <button
                       onClick={() => {
                         const newNote = createNote();
+                        if (isPrivateSpace) {
+                          updateNote(newNote.id, { isPrivate: true });
+                        }
                         setActiveNoteId(newNote.id);
                         setViewMode('editor');
                         setIsCreateDropdownOpen(false);
+                        setSidebarOpen(false);
                       }}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
                     >
@@ -1337,6 +1357,32 @@ export const Sidebar: React.FC = () => {
             </div>
           </div>
         )}
+        {/* Bottom Trash Button (ONLY in Private Space) */}
+        {isPrivateSpace && (
+          <div className="shrink-0 pt-2 border-t mt-auto" style={{ borderColor: hexToRgba(theme.text, 0.1) }}>
+            <button
+              onClick={() => {
+                openTrash('private');
+                setSidebarOpen(false);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition hover:opacity-90 active:scale-98 cursor-pointer border"
+              style={{
+                backgroundColor: hexToRgba(theme.accent, 0.12),
+                borderColor: hexToRgba(theme.accent, 0.25),
+                color: theme.accent,
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <Trash2 size={15} />
+                <span>Корзина</span>
+              </div>
+              <span className="text-[10px] opacity-60 font-semibold">
+                {deletedNotes.filter(n => Boolean(n.isPrivate)).length}
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* Action Menu Settings Submenu Modal */}
         <ActionMenuSettingsModal
           isOpen={isActionMenuSettingsOpen}

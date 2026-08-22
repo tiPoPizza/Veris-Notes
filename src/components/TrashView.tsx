@@ -27,6 +27,7 @@ export const TrashView: React.FC = () => {
     deletedNotes,
     deletedTaskLists,
     deletedEvents,
+    trashPrivacyMode,
     restoreNote,
     restoreTaskList,
     restoreCalendarEvent,
@@ -42,6 +43,13 @@ export const TrashView: React.FC = () => {
     theme,
     quickSettings,
   } = useApp();
+
+  const isPrivateTrash = trashPrivacyMode === 'private';
+  const visibleDeletedNotes = isPrivateTrash
+    ? deletedNotes.filter(n => Boolean(n.isPrivate))
+    : deletedNotes.filter(n => !n.isPrivate);
+  const visibleDeletedTaskLists = isPrivateTrash ? [] : deletedTaskLists;
+  const visibleDeletedEvents = isPrivateTrash ? [] : (deletedEvents || []);
 
   const [activeTab, setActiveTab] = useState<'all' | 'notes' | 'tasks' | 'events'>('all');
   const [confirmModal, setConfirmModal] = useState<ConfirmState | null>(null);
@@ -78,8 +86,8 @@ export const TrashView: React.FC = () => {
     return `${day}.${month} ${hours}:${minutes}`;
   };
 
-  const totalEvents = deletedEvents ? deletedEvents.length : 0;
-  const totalItems = deletedNotes.length + deletedTaskLists.length + totalEvents;
+  const totalEvents = visibleDeletedEvents.length;
+  const totalItems = visibleDeletedNotes.length + visibleDeletedTaskLists.length + totalEvents;
 
   const getItemsWord = (count: number) => {
     const lastTwo = count % 100;
@@ -122,52 +130,59 @@ export const TrashView: React.FC = () => {
           className="text-2xl sm:text-3xl font-extrabold tracking-tight text-center"
           style={{ color: theme.text }}
         >
-          Корзина
+          {isPrivateTrash ? 'Приватная корзина' : 'Корзина'}
         </h1>
+        {isPrivateTrash && (
+          <p className="text-xs opacity-60 mt-1">
+            Только удалённые приватные заметки
+          </p>
+        )}
       </div>
 
-      {/* Modern Segmented Filter Bar (Material You / iOS style) */}
-      <div className="flex justify-center mb-7">
-        <div
-          className="inline-flex items-center gap-1 p-1.5 rounded-2xl border backdrop-blur-xl shadow-xs max-w-full overflow-x-auto"
-          style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-        >
-          {[
-            { id: 'all', label: 'Все', count: totalItems, icon: null },
-            { id: 'notes', label: 'Заметки', count: deletedNotes.length, icon: FileText },
-            { id: 'tasks', label: 'Задачи', count: deletedTaskLists.length, icon: CheckSquare },
-            { id: 'events', label: 'События', count: totalEvents, icon: CalendarIcon },
-          ].map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'all' | 'notes' | 'tasks' | 'events')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  isActive
-                    ? 'shadow-xs scale-[1.02]'
-                    : 'opacity-60 hover:opacity-100'
-                }`}
-                style={{
-                  backgroundColor: isActive
-                    ? isLight
-                      ? '#FFFFFF'
-                      : 'rgba(255, 255, 255, 0.14)'
-                    : 'transparent',
-                  color: isActive ? theme.accent : theme.text,
-                }}
-              >
-                {Icon && <Icon size={14} />}
-                <span>{tab.label}</span>
-                <span className="text-xs font-bold opacity-60 ml-0.5">
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
+      {/* Modern Segmented Filter Bar (Material You / iOS style) - Hidden in private trash if only notes */}
+      {!isPrivateTrash && (
+        <div className="flex justify-center mb-7">
+          <div
+            className="inline-flex items-center gap-1 p-1.5 rounded-2xl border backdrop-blur-xl shadow-xs max-w-full overflow-x-auto"
+            style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+          >
+            {[
+              { id: 'all', label: 'Все', count: totalItems, icon: null },
+              { id: 'notes', label: 'Заметки', count: visibleDeletedNotes.length, icon: FileText },
+              { id: 'tasks', label: 'Задачи', count: visibleDeletedTaskLists.length, icon: CheckSquare },
+              { id: 'events', label: 'События', count: totalEvents, icon: CalendarIcon },
+            ].map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as 'all' | 'notes' | 'tasks' | 'events')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'shadow-xs scale-[1.02]'
+                      : 'opacity-60 hover:opacity-100'
+                  }`}
+                  style={{
+                    backgroundColor: isActive
+                      ? isLight
+                        ? '#FFFFFF'
+                        : 'rgba(255, 255, 255, 0.14)'
+                      : 'transparent',
+                    color: isActive ? theme.accent : theme.text,
+                  }}
+                >
+                  {Icon && <Icon size={14} />}
+                  <span>{tab.label}</span>
+                  <span className="text-xs font-bold opacity-60 ml-0.5">
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Empty State */}
       {totalItems === 0 && (
@@ -183,7 +198,7 @@ export const TrashView: React.FC = () => {
           </div>
           <div className="space-y-1">
             <p className="text-base font-extrabold" style={{ color: theme.text }}>
-              Суд окончен
+              Корзина пуста
             </p>
           </div>
         </div>
@@ -192,14 +207,14 @@ export const TrashView: React.FC = () => {
       {/* Main Content Area */}
       <div className="max-w-3xl mx-auto w-full space-y-8">
         {/* Deleted Notes Section */}
-        {(activeTab === 'all' || activeTab === 'notes') && deletedNotes.length > 0 && (
+        {(activeTab === 'all' || activeTab === 'notes' || isPrivateTrash) && visibleDeletedNotes.length > 0 && (
           <div className="space-y-3">
             {/* Section Header with Quick Clean Batch Actions */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
                 <FileText size={15} style={{ color: theme.accent }} />
                 <h3 className="text-xs font-black uppercase tracking-wider opacity-70">
-                  Заметки ({deletedNotes.length})
+                  Заметки ({visibleDeletedNotes.length})
                 </h3>
               </div>
 
@@ -208,7 +223,9 @@ export const TrashView: React.FC = () => {
                   onClick={() =>
                     requestConfirm(
                       'Восстановить заметки',
-                      'Восстановить все удалённые заметки из корзины?',
+                      isPrivateTrash
+                        ? 'Восстановить все удалённые приватные заметки обратно в приватное пространство?'
+                        : 'Восстановить все удалённые заметки из корзины?',
                       'Восстановить все',
                       false,
                       restoreAllDeletedNotes
@@ -239,7 +256,7 @@ export const TrashView: React.FC = () => {
 
             {/* Notes Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {deletedNotes.map(note => (
+              {visibleDeletedNotes.map(note => (
                 <div
                   key={note.id}
                   className="p-4 rounded-2xl border backdrop-blur-md flex flex-col justify-between space-y-3 shadow-xs transition hover:shadow-md group"
@@ -286,14 +303,14 @@ export const TrashView: React.FC = () => {
         )}
 
         {/* Deleted Task Lists Section */}
-        {(activeTab === 'all' || activeTab === 'tasks') && deletedTaskLists.length > 0 && (
+        {!isPrivateTrash && (activeTab === 'all' || activeTab === 'tasks') && visibleDeletedTaskLists.length > 0 && (
           <div className="space-y-3">
             {/* Section Header with Quick Clean Batch Actions */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
                 <CheckSquare size={15} style={{ color: theme.accent }} />
                 <h3 className="text-xs font-black uppercase tracking-wider opacity-70">
-                  Задачи ({deletedTaskLists.length})
+                  Задачи ({visibleDeletedTaskLists.length})
                 </h3>
               </div>
 
@@ -333,7 +350,7 @@ export const TrashView: React.FC = () => {
 
             {/* Tasks Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {deletedTaskLists.map(list => (
+              {visibleDeletedTaskLists.map(list => (
                 <div
                   key={list.id}
                   className="p-4 rounded-2xl border backdrop-blur-md flex flex-col justify-between space-y-3 shadow-xs transition hover:shadow-md group"
@@ -380,7 +397,7 @@ export const TrashView: React.FC = () => {
         )}
 
         {/* Deleted Calendar Events Section */}
-        {(activeTab === 'all' || activeTab === 'events') && totalEvents > 0 && (
+        {!isPrivateTrash && (activeTab === 'all' || activeTab === 'events') && totalEvents > 0 && (
           <div className="space-y-3">
             {/* Section Header with Quick Clean Batch Actions */}
             <div className="flex items-center justify-between px-1">
@@ -427,7 +444,7 @@ export const TrashView: React.FC = () => {
 
             {/* Events Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {deletedEvents.map(event => (
+              {visibleDeletedEvents.map(event => (
                 <div
                   key={event.id}
                   className="p-4 rounded-2xl border backdrop-blur-md flex flex-col justify-between space-y-3 shadow-xs transition hover:shadow-md group"

@@ -10,9 +10,10 @@ interface PinModalProps {
   mode: PinModalMode;
   target?: PinTarget;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClose }) => {
+export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClose, onSuccess }) => {
   const {
     theme,
     appPin,
@@ -111,6 +112,7 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
           return;
         }
         savePin(enteredNew);
+        onSuccess?.();
         onClose();
       }
     } else if (mode === 'change') {
@@ -136,6 +138,7 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
           return;
         }
         savePin(enteredNew);
+        onSuccess?.();
         onClose();
       }
     } else if (mode === 'disable') {
@@ -145,9 +148,10 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
         return;
       }
       deletePin();
+      onSuccess?.();
       onClose();
     }
-  }, [mode, step, enteredNew, enteredRepeat, enteredCurrent, activePin, savePin, deletePin, onClose]);
+  }, [mode, step, enteredNew, enteredRepeat, enteredCurrent, activePin, savePin, deletePin, onSuccess, onClose]);
 
   // Physical keyboard listener
   useEffect(() => {
@@ -222,6 +226,17 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
           }}
         >
           {mode === 'disable' ? <ShieldAlert size={22} /> : <KeyRound size={22} />}
+        </div>
+
+        {/* Target Badge */}
+        <div
+          className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider mb-2"
+          style={{
+            backgroundColor: hexToRgba(theme.accent, 0.15),
+            color: theme.accent,
+          }}
+        >
+          {target === 'private' ? 'Приватное пространство' : 'Блокировка входа'}
         </div>
 
         {/* Title */}

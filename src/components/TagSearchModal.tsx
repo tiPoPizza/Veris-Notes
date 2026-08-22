@@ -97,8 +97,9 @@ export const TagSearchModal: React.FC = () => {
   ];
 
   // Calculate matching items count live
-  const matchingNotesCount = notes.filter(n => {
-    const matchesTag = !selectedTagFilter || (n.tags || []).includes(selectedTagFilter);
+  const targetNotes = viewMode === 'private' ? notes.filter(n => n.isPrivate) : notes.filter(n => !n.isPrivate);
+  const matchingNotesCount = targetNotes.filter(n => {
+    const matchesTag = viewMode === 'private' || !selectedTagFilter || (n.tags || []).includes(selectedTagFilter);
     if (!matchesTag) return false;
     if (!searchQuery.trim()) return true;
 
@@ -308,212 +309,214 @@ export const TagSearchModal: React.FC = () => {
         </>
       )}
 
-      {/* Tags Section Header */}
-      <div
-        className={!isPinnedOnHome ? 'pt-2 border-t' : ''}
-        style={{ borderColor: hexToRgba(theme.text, 0.08) }}
-      >
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold flex items-center gap-1.5 opacity-75">
-            <TagIcon size={12} style={{ color: theme.accent }} />
-            <span>Теги</span>
-          </span>
+      {/* Tags Section Header (Hidden in Private Mode) */}
+      {viewMode !== 'private' && (
+        <div
+          className={!isPinnedOnHome ? 'pt-2 border-t' : ''}
+          style={{ borderColor: hexToRgba(theme.text, 0.08) }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold flex items-center gap-1.5 opacity-75">
+              <TagIcon size={12} style={{ color: theme.accent }} />
+              <span>Теги</span>
+            </span>
 
-          {!isCreatingTag && (
-            <button
-              type="button"
-              onClick={handleStartCreateTag}
-              className="p-1 rounded-lg border flex items-center justify-center opacity-80 hover:opacity-100 transition cursor-pointer"
-              style={{
-                backgroundColor: hexToRgba(theme.accent, 0.15),
-                borderColor: hexToRgba(theme.accent, 0.3),
-                color: theme.accent,
-              }}
-              title="Создать новый тег"
-            >
-              <Plus size={13} />
-            </button>
-          )}
-        </div>
-
-        {/* Tag Creator / Editor Form */}
-        {isCreatingTag && (
-          <div
-            className="p-2.5 mb-2.5 rounded-xl border space-y-2 animate-in fade-in duration-150"
-            style={{
-              backgroundColor: hexToRgba(theme.text, 0.04),
-              borderColor: hexToRgba(theme.text, 0.15),
-            }}
-          >
-            <div className="flex items-center justify-between text-xs font-bold">
-              <span className="flex items-center gap-1.5">
-                <TagIcon size={12} style={{ color: tagColorInput }} />
-                <span>{editingTagId ? 'Настройка тега' : 'Новый тег'}</span>
-              </span>
+            {!isCreatingTag && (
               <button
                 type="button"
-                onClick={() => {
-                  setIsCreatingTag(false);
-                  setEditingTagId(null);
-                }}
-                className="opacity-60 hover:opacity-100 p-0.5 cursor-pointer"
-              >
-                <X size={12} />
-              </button>
-            </div>
-
-            <input
-              type="text"
-              value={tagNameInput}
-              onChange={e => setTagNameInput(e.target.value)}
-              placeholder="Название тега..."
-              className="w-full px-2.5 py-1 rounded-lg text-xs font-semibold border outline-hidden"
-              style={{
-                backgroundColor: hexToRgba(theme.text, 0.06),
-                borderColor: hexToRgba(theme.text, 0.12),
-                color: theme.text,
-              }}
-              autoFocus
-            />
-
-            <ColorSelectGroup
-              selectedColor={tagColorInput}
-              onChange={setTagColorInput}
-              theme={theme}
-              label="Цвет тега"
-            />
-
-            <div
-              className="flex items-center justify-end gap-2 pt-1 border-t"
-              style={{ borderColor: hexToRgba(theme.text, 0.08) }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCreatingTag(false);
-                  setEditingTagId(null);
-                }}
-                className="px-2 py-0.5 rounded-lg text-xs opacity-70 hover:opacity-100 cursor-pointer"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveTag}
-                disabled={!tagNameInput.trim()}
-                className="px-2.5 py-0.5 rounded-lg text-xs font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs active:scale-95 border"
+                onClick={handleStartCreateTag}
+                className="p-1 rounded-lg border flex items-center justify-center opacity-80 hover:opacity-100 transition cursor-pointer"
                 style={{
-                  borderColor: tagColorInput,
-                  backgroundColor: hexToRgba(tagColorInput, 0.2),
-                  color: tagColorInput,
+                  backgroundColor: hexToRgba(theme.accent, 0.15),
+                  borderColor: hexToRgba(theme.accent, 0.3),
+                  color: theme.accent,
                 }}
+                title="Создать новый тег"
               >
-                {editingTagId ? 'Сохранить' : 'Добавить'}
+                <Plus size={13} />
               </button>
-            </div>
+            )}
           </div>
-        )}
 
-        {/* Tag List */}
-        <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
-          {selectedTagFilter && (
-            <button
-              onClick={() => {
-                setSelectedTagFilter(null);
-              }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-medium hover:opacity-90 transition mb-1 border cursor-pointer"
+          {/* Tag Creator / Editor Form */}
+          {isCreatingTag && (
+            <div
+              className="p-2.5 mb-2.5 rounded-xl border space-y-2 animate-in fade-in duration-150"
               style={{
-                backgroundColor: hexToRgba(theme.accent, 0.15),
-                borderColor: hexToRgba(theme.accent, 0.3),
-                color: theme.accent,
+                backgroundColor: hexToRgba(theme.text, 0.04),
+                borderColor: hexToRgba(theme.text, 0.15),
               }}
             >
-              <span>Сбросить тег #{selectedTagFilter}</span>
-              <X size={13} />
-            </button>
-          )}
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="flex items-center gap-1.5">
+                  <TagIcon size={12} style={{ color: tagColorInput }} />
+                  <span>{editingTagId ? 'Настройка тега' : 'Новый тег'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingTag(false);
+                    setEditingTagId(null);
+                  }}
+                  className="opacity-60 hover:opacity-100 p-0.5 cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              </div>
 
-          {filteredTags.map(tag => {
-            const isSelected = selectedTagFilter === tag.name;
-            return (
-              <div
-                key={tag.id}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer group border ${
-                  isSelected ? 'shadow-xs' : 'hover:opacity-90'
-                }`}
+              <input
+                type="text"
+                value={tagNameInput}
+                onChange={e => setTagNameInput(e.target.value)}
+                placeholder="Название тега..."
+                className="w-full px-2.5 py-1 rounded-lg text-xs font-semibold border outline-hidden"
                 style={{
-                  backgroundColor: isSelected
-                    ? hexToRgba(tag.color, 0.22)
-                    : hexToRgba(theme.text, 0.04),
-                  borderColor: isSelected ? tag.color : hexToRgba(theme.text, 0.08),
+                  backgroundColor: hexToRgba(theme.text, 0.06),
+                  borderColor: hexToRgba(theme.text, 0.12),
                   color: theme.text,
                 }}
+                autoFocus
+              />
+
+              <ColorSelectGroup
+                selectedColor={tagColorInput}
+                onChange={setTagColorInput}
+                theme={theme}
+                label="Цвет тега"
+              />
+
+              <div
+                className="flex items-center justify-end gap-2 pt-1 border-t"
+                style={{ borderColor: hexToRgba(theme.text, 0.08) }}
               >
-                {/* Tag select and name */}
-                <div
-                  className="flex items-center gap-2 truncate pr-1 flex-1 cursor-pointer"
+                <button
+                  type="button"
                   onClick={() => {
-                    setSelectedTagFilter(isSelected ? null : tag.name);
-                    if (viewMode === 'notes' || viewMode === 'editor') {
-                      setViewMode('notes');
-                    } else if (viewMode !== 'tasks') {
-                      setViewMode(previousViewMode === 'tasks' ? 'tasks' : 'notes');
-                    }
+                    setIsCreatingTag(false);
+                    setEditingTagId(null);
+                  }}
+                  className="px-2 py-0.5 rounded-lg text-xs opacity-70 hover:opacity-100 cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTag}
+                  disabled={!tagNameInput.trim()}
+                  className="px-2.5 py-0.5 rounded-lg text-xs font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs active:scale-95 border"
+                  style={{
+                    borderColor: tagColorInput,
+                    backgroundColor: hexToRgba(tagColorInput, 0.2),
+                    color: tagColorInput,
                   }}
                 >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
-                    style={{ backgroundColor: tag.color }}
-                  />
-                  <span className={`truncate ${isSelected ? 'font-bold' : ''}`}>{tag.name}</span>
-                  {isSelected && (
-                    <Check size={12} style={{ color: tag.color }} className="shrink-0" />
-                  )}
+                  {editingTagId ? 'Сохранить' : 'Добавить'}
+                </button>
+              </div>
+            </div>
+          )}
 
-                  {/* Pencil right next to name */}
-                  <button
-                    type="button"
-                    onClick={e => {
-                      e.stopPropagation();
-                      handleStartEditTag(tag);
-                    }}
-                    title={`Настроить цвет «${tag.name}»`}
-                    className="p-0.5 rounded-md opacity-40 group-hover:opacity-80 hover:!opacity-100 hover:bg-black/10 transition cursor-pointer shrink-0"
-                    style={{ color: tag.color }}
-                  >
-                    <Edit2 size={11} />
-                  </button>
-                </div>
+          {/* Tag List */}
+          <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
+            {selectedTagFilter && (
+              <button
+                onClick={() => {
+                  setSelectedTagFilter(null);
+                }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-medium hover:opacity-90 transition mb-1 border cursor-pointer"
+                style={{
+                  backgroundColor: hexToRgba(theme.accent, 0.15),
+                  borderColor: hexToRgba(theme.accent, 0.3),
+                  color: theme.accent,
+                }}
+              >
+                <span>Сбросить тег #{selectedTagFilter}</span>
+                <X size={13} />
+              </button>
+            )}
 
-                {/* Isolated delete button on the right */}
+            {filteredTags.map(tag => {
+              const isSelected = selectedTagFilter === tag.name;
+              return (
                 <div
-                  className="flex items-center pl-1.5 border-l shrink-0"
-                  style={{ borderColor: hexToRgba(theme.text, 0.1) }}
+                  key={tag.id}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer group border ${
+                    isSelected ? 'shadow-xs' : 'hover:opacity-90'
+                  }`}
+                  style={{
+                    backgroundColor: isSelected
+                      ? hexToRgba(tag.color, 0.22)
+                      : hexToRgba(theme.text, 0.04),
+                    borderColor: isSelected ? tag.color : hexToRgba(theme.text, 0.08),
+                    color: theme.text,
+                  }}
                 >
-                  <button
-                    type="button"
-                    onClick={e => {
-                      e.stopPropagation();
-                      deleteTagByName(tag.name);
-                      if (selectedTagFilter?.toLowerCase() === tag.name.toLowerCase()) {
-                        setSelectedTagFilter(null);
+                  {/* Tag select and name */}
+                  <div
+                    className="flex items-center gap-2 truncate pr-1 flex-1 cursor-pointer"
+                    onClick={() => {
+                      setSelectedTagFilter(isSelected ? null : tag.name);
+                      if (viewMode === 'notes' || viewMode === 'editor') {
+                        setViewMode('notes');
+                      } else if (viewMode !== 'tasks') {
+                        setViewMode(previousViewMode === 'tasks' ? 'tasks' : 'notes');
                       }
                     }}
-                    title="Удалить тег"
-                    className="p-1 rounded-md opacity-40 group-hover:opacity-70 hover:!opacity-100 hover:bg-red-500/20 hover:text-red-400 transition cursor-pointer"
                   >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                    <span
+                      className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className={`truncate ${isSelected ? 'font-bold' : ''}`}>{tag.name}</span>
+                    {isSelected && (
+                      <Check size={12} style={{ color: tag.color }} className="shrink-0" />
+                    )}
 
-          {filteredTags.length === 0 && (
-            <div className="text-center py-3 text-xs opacity-50">Теги не найдены</div>
-          )}
+                    {/* Pencil right next to name */}
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleStartEditTag(tag);
+                      }}
+                      title={`Настроить цвет «${tag.name}»`}
+                      className="p-0.5 rounded-md opacity-40 group-hover:opacity-80 hover:!opacity-100 hover:bg-black/10 transition cursor-pointer shrink-0"
+                      style={{ color: tag.color }}
+                    >
+                      <Edit2 size={11} />
+                    </button>
+                  </div>
+
+                  {/* Isolated delete button on the right */}
+                  <div
+                    className="flex items-center pl-1.5 border-l shrink-0"
+                    style={{ borderColor: hexToRgba(theme.text, 0.1) }}
+                  >
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation();
+                        deleteTagByName(tag.name);
+                        if (selectedTagFilter?.toLowerCase() === tag.name.toLowerCase()) {
+                          setSelectedTagFilter(null);
+                        }
+                      }}
+                      title="Удалить тег"
+                      className="p-1 rounded-md opacity-40 group-hover:opacity-70 hover:!opacity-100 hover:bg-red-500/20 hover:text-red-400 transition cursor-pointer"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredTags.length === 0 && (
+              <div className="text-center py-3 text-xs opacity-50">Теги не найдены</div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Global Clear All Filters if active */}
       {(searchQuery.trim() || selectedTagFilter) && (

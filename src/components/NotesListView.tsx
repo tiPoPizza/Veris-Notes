@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { getTranslation } from '../i18n';
 import { Note, NoteBlock } from '../types';
-import { Pin, Search, Plus, Tag as TagIcon, X, Trash2, MoreHorizontal, Copy, CopyPlus, Check, Download, Layers, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Edit2 } from 'lucide-react';
+import { Pin, Search, Plus, Tag as TagIcon, X, Trash2, MoreHorizontal, Copy, CopyPlus, Check, Download, Layers, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Edit2, Shield } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { stripHtmlTags } from '../utils/textUtils';
 import { getFontFamilyStyle } from '../utils/fonts';
 import { PinnedSearchBar } from './PinnedSearchBar';
+import { PinModal } from './PinModal';
 
 export const NotesListView: React.FC = () => {
   const {
@@ -30,6 +31,7 @@ export const NotesListView: React.FC = () => {
     searchTarget,
     setIsTagSearchOpen,
     sidebarOpen,
+    privatePin,
     theme,
     language,
     quickSettings,
@@ -50,6 +52,8 @@ export const NotesListView: React.FC = () => {
   const [newTagColor, setNewTagColor] = useState<string>('#A855F7');
   const [isCreatingCustomTag, setIsCreatingCustomTag] = useState<boolean>(false);
   const [copiedNotice, setCopiedNotice] = useState<string | null>(null);
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [targetPrivateNoteId, setTargetPrivateNoteId] = useState<string | null>(null);
 
   const longPressTimerRef = React.useRef<{ [key: string]: ReturnType<typeof setTimeout> }>({});
   const isLongPressRef = React.useRef<boolean>(false);
@@ -99,6 +103,8 @@ export const NotesListView: React.FC = () => {
   };
 
   const filteredNotes = notes.filter(n => {
+    if (n.isPrivate) return false;
+
     const matchesTag = !selectedTagFilter || getNoteTags(n).includes(selectedTagFilter);
     if (!matchesTag) return false;
 
@@ -121,13 +127,14 @@ export const NotesListView: React.FC = () => {
 
   // Helper to get notes for a block
   const getNotesForBlock = (block: NoteBlock, notesList: Note[]) => {
+    const list = notesList.filter(n => !n.isPrivate);
     if (block.id === 'pinned' || block.type === 'pinned') {
-      return notesList.filter(n => n.pinned);
+      return list.filter(n => n.pinned);
     }
     if (block.id === 'general' || block.type === 'general') {
-      return notesList.filter(n => !n.pinned && (!n.blockId || n.blockId === 'general'));
+      return list.filter(n => !n.pinned && (!n.blockId || n.blockId === 'general'));
     }
-    return notesList.filter(n => !n.pinned && n.blockId === block.id);
+    return list.filter(n => !n.pinned && n.blockId === block.id);
   };
 
   const cardBg = isLight ? '#FFFFFF' : hexToRgba(theme.text, 0.05);
@@ -143,9 +150,9 @@ export const NotesListView: React.FC = () => {
     const isTagSubmenuOpen = tagSubmenuNoteId === activeNote.id;
     const isBlockSubmenuOpen = blockSubmenuNoteId === activeNote.id;
 
-    // Collect all unique tag names from default tags and notes
+    // Collect all unique tag names from default tags and public notes
     const noteTagNames = new Set<string>();
-    notes.forEach(n => {
+    notes.filter(n => !n.isPrivate).forEach(n => {
       (n.tags || []).forEach(t => noteTagNames.add(t));
     });
 
@@ -237,11 +244,11 @@ export const NotesListView: React.FC = () => {
                       onClick={e => {
                         e.stopPropagation();
                         if (b.id === 'pinned' || b.type === 'pinned') {
-                          updateNote(activeNote.id, { pinned: true });
+                          updateNote(activeNote.id, { pinned: true, isPrivate: false });
                         } else if (b.id === 'general' || b.type === 'general') {
-                          updateNote(activeNote.id, { pinned: false, blockId: 'general' });
+                          updateNote(activeNote.id, { pinned: false, blockId: 'general', isPrivate: false });
                         } else {
-                          updateNote(activeNote.id, { pinned: false, blockId: b.id });
+                          updateNote(activeNote.id, { pinned: false, blockId: b.id, isPrivate: false });
                         }
                         setBlockSubmenuNoteId(null);
                       }}
@@ -258,6 +265,30 @@ export const NotesListView: React.FC = () => {
                     </button>
                   );
                 })}
+
+                {/* Option to move directly to Private Space */}
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    if (!privatePin) {
+                      setTargetPrivateNoteId(activeNote.id);
+                      setIsPinModalOpen(true);
+                    } else {
+                      updateNote(activeNote.id, { isPrivate: true });
+                    }
+                    setBlockSubmenuNoteId(null);
+                  }}
+                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs hover:bg-white/10 active:scale-98 transition text-left cursor-pointer"
+                  style={{
+                    backgroundColor: activeNote.isPrivate ? hexToRgba(theme.accent, 0.18) : 'transparent',
+                  }}
+                >
+                  <div className="flex items-center gap-2 truncate pr-1">
+                    <Shield size={13} style={{ color: theme.accent }} className="shrink-0" />
+                    <span className="truncate">Приватное пространство</span>
+                  </div>
+                  {activeNote.isPrivate && <Check size={14} style={{ color: theme.accent }} className="shrink-0" />}
+                </button>
               </div>
 
               <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
@@ -366,6 +397,24 @@ export const NotesListView: React.FC = () => {
               >
                 <TagIcon size={14} style={{ color: theme.accent }} />
                 <span>Добавить тег</span>
+              </button>
+
+              {/* "В приват" Action */}
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  if (!privatePin) {
+                    setTargetPrivateNoteId(activeNote.id);
+                    setIsPinModalOpen(true);
+                  } else {
+                    updateNote(activeNote.id, { isPrivate: !activeNote.isPrivate });
+                  }
+                  setOpenMenuNoteId(null);
+                }}
+                className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
+              >
+                <Shield size={14} style={{ color: theme.accent }} />
+                <span>{activeNote.isPrivate ? 'Убрать из привата' : 'В приват'}</span>
               </button>
 
               <button
@@ -1083,6 +1132,24 @@ export const NotesListView: React.FC = () => {
             <span>{t('create')}</span>
           </button>
         </div>
+      )}
+
+      {isPinModalOpen && (
+        <PinModal
+          target="private"
+          mode="set"
+          onClose={() => {
+            setIsPinModalOpen(false);
+            setTargetPrivateNoteId(null);
+          }}
+          onSuccess={() => {
+            setIsPinModalOpen(false);
+            if (targetPrivateNoteId) {
+              updateNote(targetPrivateNoteId, { isPrivate: true });
+              setTargetPrivateNoteId(null);
+            }
+          }}
+        />
       )}
     </div>
   );

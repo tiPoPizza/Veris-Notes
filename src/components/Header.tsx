@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { stripHtmlTags } from '../utils/textUtils';
+import { PinModal } from './PinModal';
 
 export const Header: React.FC = () => {
   const {
@@ -49,6 +50,7 @@ export const Header: React.FC = () => {
     openExportModal,
     sidebarOpen,
     setSidebarOpen,
+    privatePin,
     theme,
     language,
     quickSettings,
@@ -60,6 +62,7 @@ export const Header: React.FC = () => {
   const [tagSearchQuery, setTagSearchQuery] = useState('');
   const [isTrashConfirmOpen, setIsTrashConfirmOpen] = useState(false);
   const [copiedToast, setCopiedToast] = useState<string | null>(null);
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const quickActionsMenuRef = useRef<HTMLDivElement>(null);
@@ -104,9 +107,9 @@ export const Header: React.FC = () => {
     }
   };
 
-  // Collect all unique tag names from default tags and notes
+  // Collect all unique tag names from default tags and public notes
   const noteTagNames = new Set<string>();
-  notes.forEach(n => {
+  notes.filter(n => !n.isPrivate).forEach(n => {
     (n.tags || []).forEach(t => noteTagNames.add(t));
   });
 
@@ -187,8 +190,9 @@ export const Header: React.FC = () => {
               </button>
               <button
                 onClick={() => {
+                  const wasPrivate = Boolean(activeNote?.isPrivate || previousViewMode === 'private');
                   deleteNote(activeNote.id);
-                  setViewMode('notes');
+                  setViewMode(wasPrivate ? 'private' : 'notes');
                   setIsTrashConfirmOpen(false);
                 }}
                 className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs text-white bg-red-500 hover:bg-red-600 active:scale-98 transition cursor-pointer shadow-lg shadow-red-500/20"
@@ -222,12 +226,18 @@ export const Header: React.FC = () => {
 
           {viewMode === 'editor' && (
             <button
-              onClick={() => setViewMode('notes')}
+              onClick={() => {
+                if (activeNote?.isPrivate || previousViewMode === 'private') {
+                  setViewMode('private');
+                } else {
+                  setViewMode('notes');
+                }
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-white/10 active:scale-95 text-xs font-bold transition cursor-pointer"
               style={{ color: theme.text }}
             >
               <ArrowLeft size={14} />
-              <span>{t('notes')}</span>
+              <span>{activeNote?.isPrivate || previousViewMode === 'private' ? 'Приват' : t('notes')}</span>
             </button>
           )}
         </div>
@@ -358,7 +368,15 @@ export const Header: React.FC = () => {
                       {/* 5. В приватное пространство */}
                       <button
                         onClick={() => {
-                          updateNote(activeNote.id, { isPrivate: !activeNote.isPrivate });
+                          if (!privatePin) {
+                            setIsPinModalOpen(true);
+                          } else {
+                            const newPrivate = !activeNote.isPrivate;
+                            updateNote(activeNote.id, { isPrivate: newPrivate });
+                            if (newPrivate) {
+                              setViewMode('private');
+                            }
+                          }
                           setIsEditorMenuOpen(false);
                         }}
                         className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
@@ -522,22 +540,43 @@ export const Header: React.FC = () => {
           {/* Main Views: Burger Menu (Quick Actions: Settings, AI, Web Search) & Tag Search Button */}
           {viewMode !== 'editor' && viewMode !== 'trash' && viewMode !== 'settings' && viewMode !== 'calendar' && (
             <div className="flex items-center gap-2">
-              {/* Tag & Search Button (#) */}
-              <button
-                onClick={() => setIsTagSearchOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl border shadow-lg backdrop-blur-xl text-xs font-extrabold hover:opacity-80 active:scale-95 transition cursor-pointer"
-                style={{
-                  backgroundColor: searchQuery.trim() || selectedTagFilter ? hexToRgba(theme.accent, 0.22) : glassBg,
-                  borderColor: searchQuery.trim() || selectedTagFilter ? theme.accent : glassBorder,
-                  color: searchQuery.trim() || selectedTagFilter ? theme.accent : theme.text,
-                }}
-                title="Поиск и теги (#)"
-              >
-                <span className="text-sm font-black">#</span>
-                <span className="hidden sm:inline font-bold">
-                  {searchQuery.trim() ? `«${searchQuery}»` : selectedTagFilter ? `#${selectedTagFilter}` : t('searchTags')}
-                </span>
-              </button>
+              {/* Tag & Search Button (#) - Hidden in Private Mode */}
+              {viewMode !== 'private' ? (
+                <button
+                  onClick={() => setIsTagSearchOpen(true)}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl border shadow-lg backdrop-blur-xl text-xs font-extrabold hover:opacity-80 active:scale-95 transition cursor-pointer"
+                  style={{
+                    backgroundColor: searchQuery.trim() || selectedTagFilter ? hexToRgba(theme.accent, 0.22) : glassBg,
+                    borderColor: searchQuery.trim() || selectedTagFilter ? theme.accent : glassBorder,
+                    color: searchQuery.trim() || selectedTagFilter ? theme.accent : theme.text,
+                  }}
+                  title="Поиск и теги (#)"
+                >
+                  <span className="text-sm font-black">#</span>
+                  <span className="hidden sm:inline font-bold">
+                    {searchQuery.trim() ? `«${searchQuery}»` : selectedTagFilter ? `#${selectedTagFilter}` : t('searchTags')}
+                  </span>
+                </button>
+              ) : (
+                /* In Private Mode: do not show '#', show note search button if search is not pinned to home screen */
+                !quickSettings.pinSearchToHomeScreen && (
+                  <button
+                    onClick={() => setIsTagSearchOpen(true)}
+                    className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl border shadow-lg backdrop-blur-xl text-xs font-extrabold hover:opacity-80 active:scale-95 transition cursor-pointer"
+                    style={{
+                      backgroundColor: searchQuery.trim() ? hexToRgba(theme.accent, 0.22) : glassBg,
+                      borderColor: searchQuery.trim() ? theme.accent : glassBorder,
+                      color: searchQuery.trim() ? theme.accent : theme.text,
+                    }}
+                    title="Поиск заметок"
+                  >
+                    <Search size={15} />
+                    {searchQuery.trim() && (
+                      <span className="hidden sm:inline font-bold">«{searchQuery}»</span>
+                    )}
+                  </button>
+                )
+              )}
 
               {/* Quick Actions Burger Menu */}
               <div className="relative" ref={quickActionsMenuRef}>
@@ -628,6 +667,21 @@ export const Header: React.FC = () => {
             </button>
           )}
         </div>
+      )}
+
+      {isPinModalOpen && (
+        <PinModal
+          target="private"
+          mode="set"
+          onClose={() => setIsPinModalOpen(false)}
+          onSuccess={() => {
+            setIsPinModalOpen(false);
+            if (activeNote) {
+              updateNote(activeNote.id, { isPrivate: true });
+              setViewMode('private');
+            }
+          }}
+        />
       )}
     </>
   );

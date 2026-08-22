@@ -355,6 +355,11 @@ interface AppContextType {
   privateLockoutUntil: number;
   privateFailedAttempts: number;
 
+  // Trash privacy mode
+  trashPrivacyMode: 'public' | 'private';
+  setTrashPrivacyMode: (mode: 'public' | 'private') => void;
+  openTrash: (mode?: 'public' | 'private') => void;
+
   // Reset & Import
   resetAllData: () => void;
   importFiles: (files: FileList | File[]) => Promise<{ count: number; errors: string[] }>;
@@ -909,9 +914,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  // Auto-lock private space whenever navigating away from private space or private note editor
+  useEffect(() => {
+    const isEditingPrivateNote = viewMode === 'editor' && notes.some(n => n.id === activeNoteId && n.isPrivate);
+    if (viewMode !== 'private' && !isEditingPrivateNote) {
+      if (privatePin) {
+        setIsPrivateLocked(true);
+      }
+    }
+  }, [viewMode, activeNoteId, notes, privatePin]);
+
   // Undo / Redo history stack for current note content
   const [history, setHistory] = useState<Record<string, string[]>>({});
   const [historyIndex, setHistoryIndex] = useState<Record<string, number>>({});
+
+  // Trash privacy mode: 'public' or 'private'
+  const [trashPrivacyMode, setTrashPrivacyMode] = useState<'public' | 'private'>('public');
+
+  const openTrash = (mode: 'public' | 'private' = 'public') => {
+    setTrashPrivacyMode(mode);
+    setViewMode('trash');
+  };
 
   // Hydrate from IndexedDB on startup for full large-media fidelity
   useEffect(() => {
@@ -1195,11 +1218,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const targetNote = prev.find(n => n.id === noteId);
       if (!targetNote) return prev;
 
-      const isPinned = targetNote.pinned;
+      const isPrivate = Boolean(targetNote.isPrivate);
+      const isPinned = Boolean(targetNote.pinned);
       const blockId = targetNote.blockId || 'general';
 
-      // Find all notes belonging to the same visual block group
+      // Find all notes belonging to the same visual block group and privacy level
       const sameBlockNotes = prev.filter(n => {
+        if (Boolean(n.isPrivate) !== isPrivate) return false;
         if (isPinned) return n.pinned;
         if (blockId === 'general') return !n.pinned && (!n.blockId || n.blockId === 'general');
         return !n.pinned && n.blockId === blockId;
@@ -1537,12 +1562,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const clearAllDeletedNotes = () => {
-    setDeletedNotes([]);
+    if (trashPrivacyMode === 'private') {
+      setDeletedNotes(prev => prev.filter(n => !n.isPrivate));
+    } else {
+      setDeletedNotes(prev => prev.filter(n => Boolean(n.isPrivate)));
+    }
   };
 
   const restoreAllDeletedNotes = () => {
-    setNotes(prev => [...deletedNotes, ...prev]);
-    setDeletedNotes([]);
+    if (trashPrivacyMode === 'private') {
+      const toRestore = deletedNotes.filter(n => n.isPrivate);
+      setNotes(prev => [...toRestore, ...prev]);
+      setDeletedNotes(prev => prev.filter(n => !n.isPrivate));
+    } else {
+      const toRestore = deletedNotes.filter(n => !n.isPrivate);
+      setNotes(prev => [...toRestore, ...prev]);
+      setDeletedNotes(prev => prev.filter(n => Boolean(n.isPrivate)));
+    }
   };
 
   const togglePinNote = (id: string) => {
@@ -2381,6 +2417,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetPrivateSpace,
         privateLockoutUntil,
         privateFailedAttempts,
+
+        trashPrivacyMode,
+        setTrashPrivacyMode,
+        openTrash,
 
         setTheme,
         setQuickSettings,
