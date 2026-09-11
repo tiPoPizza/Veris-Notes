@@ -1,11 +1,171 @@
 @import "tailwindcss";
 
+/* Text selection highlight color matching active theme palette */
+::selection {
+  background-color: var(--theme-accent-highlight, rgba(234, 179, 8, 0.35));
+}
+
+::-moz-selection {
+  background-color: var(--theme-accent-highlight, rgba(234, 179, 8, 0.35));
+}
+
+:root {
+  accent-color: var(--theme-accent, #eab308);
+  caret-color: var(--theme-accent, #eab308);
+}
+
+input, textarea, [contenteditable], .note-editor-content {
+  accent-color: var(--theme-accent, #eab308);
+  caret-color: var(--theme-accent, #eab308);
+}
+
 /* Disable mobile browser text selection action popup (Cut/Copy bar) and customize selection appearance */
 [contenteditable="true"],
 .note-editor-content {
   -webkit-touch-callout: none;
   -webkit-user-select: text;
   user-select: text;
+}
+
+/* Note content semantic typography in editor and note views */
+.note-editor-content h1,
+[contenteditable="true"] h1 {
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  font-weight: 800;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.note-editor-content h2,
+[contenteditable="true"] h2 {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 700;
+  margin-top: 0.875rem;
+  margin-bottom: 0.375rem;
+}
+
+.note-editor-content h3,
+[contenteditable="true"] h3 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 700;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.note-editor-content ul,
+[contenteditable="true"] ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.note-editor-content ol,
+[contenteditable="true"] ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.note-editor-content li,
+[contenteditable="true"] li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.note-editor-content b,
+.note-editor-content strong,
+[contenteditable="true"] b,
+[contenteditable="true"] strong {
+  font-weight: 700;
+}
+
+.note-editor-content i,
+.note-editor-content em,
+[contenteditable="true"] i,
+[contenteditable="true"] em {
+  font-style: italic;
+}
+
+.note-editor-content blockquote,
+[contenteditable="true"] blockquote {
+  border-left: 3.5px solid var(--theme-accent, currentColor);
+  opacity: 0.9;
+  padding-left: 1rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-style: italic;
+}
+
+.note-editor-content blockquote + blockquote,
+[contenteditable="true"] blockquote + blockquote {
+  margin-top: -0.75rem;
+  padding-top: 0;
+}
+
+.note-editor-content blockquote p,
+[contenteditable="true"] blockquote p,
+.note-editor-content blockquote div,
+[contenteditable="true"] blockquote div {
+  margin: 0;
+  min-height: 1.5em;
+  line-height: inherit;
+}
+
+.note-editor-content blockquote div:empty::before,
+[contenteditable="true"] blockquote div:empty::before,
+.note-editor-content blockquote p:empty::before,
+[contenteditable="true"] blockquote p:empty::before {
+  content: '\200B';
+  display: inline-block;
+}
+
+.note-editor-content u,
+[contenteditable="true"] u {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.note-editor-content pre,
+[contenteditable="true"] pre {
+  background: rgba(125, 125, 125, 0.12);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 0.75rem 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  border: 1px solid rgba(125, 125, 125, 0.2);
+}
+
+.note-editor-content code,
+[contenteditable="true"] code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+  background: rgba(125, 125, 125, 0.15);
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+}
+
+.note-editor-content mark,
+[contenteditable="true"] mark,
+.note-editor-content span[data-highlight="true"],
+[contenteditable="true"] span[data-highlight="true"] {
+  display: inline !important;
+  box-decoration-break: clone !important;
+  -webkit-box-decoration-break: clone !important;
+  padding-top: 0.32em !important;
+  padding-bottom: 0.32em !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  border-radius: 2px !important;
+  line-height: inherit !important;
 }
 
 /* In-Editor Search Highlighting (CSS Custom Highlight API) */
@@ -19,4 +179,57 @@
   color: var(--search-active-text, #ffffff);
   font-weight: 700;
 }
+
+/* Custom Scrollbars: hidden by default, visible only during active scroll */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  transition: background-color 0.15s ease-out;
+}
+
+/* While scrolling: display the scrollbar thumb ONLY on the element that is actively scrolling */
+.is-scrolling {
+  scrollbar-color: rgba(150, 150, 150, 0.38) transparent;
+}
+.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: rgba(150, 150, 150, 0.38);
+}
+.is-scrolling::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(150, 150, 150, 0.6);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  transition: background-color 0.15s ease-out;
+}
+.custom-scrollbar.is-scrolling {
+  scrollbar-color: rgba(150, 150, 150, 0.38) transparent;
+}
+.custom-scrollbar.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: rgba(150, 150, 150, 0.38);
+}
+
 

@@ -33,6 +33,7 @@ export const TasksView: React.FC = () => {
     openCreateTaskListModal,
     openEditTaskListModal,
     sidebarOpen,
+    isTagSearchOpen,
     theme,
     language,
     quickSettings,
@@ -547,7 +548,12 @@ export const TasksView: React.FC = () => {
       )}
 
       {/* Task Content: Empty State / Horizontal Layout / Vertical Grid Layout */}
-      {filteredTaskLists.length === 0 ? (
+      <div
+        className={`flex-1 flex flex-col min-h-0 transition-opacity duration-200 ${
+          isTagSearchOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
+      >
+        {filteredTaskLists.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center py-20 opacity-70 space-y-3">
           <Trophy size={48} className="stroke-[1.6]" style={{ color: theme.text }} />
           <p className="text-sm font-semibold tracking-tight text-center">
@@ -632,9 +638,10 @@ export const TasksView: React.FC = () => {
           {sortedTaskLists.map(list => renderTaskCard(list))}
         </div>
       )}
+      </div>
 
       {/* Floating Bottom Center Create Button */}
-      {!sidebarOpen && (
+      {!sidebarOpen && !isTagSearchOpen && (
         <div className="fixed bottom-6 inset-x-0 z-30 pointer-events-none flex justify-center px-4">
           <button
             onClick={() => openCreateTaskListModal()}

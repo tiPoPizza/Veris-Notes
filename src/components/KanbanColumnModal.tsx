@@ -279,7 +279,11 @@ export const KanbanColumnModal: React.FC = () => {
                 id="confirm-delete-col-btn"
                 type="button"
                 onClick={handleDelete}
-                className="px-5 py-2.5 rounded-2xl text-xs font-extrabold bg-red-500 text-white hover:bg-red-600 transition cursor-pointer shadow-md"
+                className="px-5 py-2.5 rounded-2xl text-xs font-extrabold transition cursor-pointer shadow-md"
+                style={{
+                  backgroundColor: deleteAction === 'delete_cards' ? '#EF4444' : theme.accent,
+                  color: deleteAction === 'delete_cards' ? '#FFFFFF' : (isLightColor(theme.accent) ? '#000000' : '#FFFFFF'),
+                }}
               >
                 Удалить
               </button>

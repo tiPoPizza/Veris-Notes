@@ -28,7 +28,7 @@ export const CalendarReminderPopup: React.FC = () => {
   };
 
   return (
-    <div className="fixed top-5 right-5 z-50 max-w-sm w-full animate-bounceIn select-none">
+    <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm animate-bounceIn select-none">
       <div
         className="rounded-3xl p-5 border shadow-2xl backdrop-blur-2xl transition-all space-y-3.5"
         style={{

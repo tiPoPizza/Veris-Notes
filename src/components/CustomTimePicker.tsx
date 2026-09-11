@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
-import { Clock, ChevronDown, Check, X, Sparkles } from 'lucide-react';
+import { Clock, ChevronDown, Check, X } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 
 interface CustomTimePickerProps {
@@ -64,19 +64,6 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
 
   const handleSelectMinute = (m: number) => {
     setMinutes(m);
-  };
-
-  const handleQuickPreset = (presetH: number, presetM: number) => {
-    setHours(presetH);
-    setMinutes(presetM);
-    handleApply(presetH, presetM);
-  };
-
-  const setNow = () => {
-    const d = new Date();
-    setHours(d.getHours());
-    setMinutes(d.getMinutes());
-    handleApply(d.getHours(), d.getMinutes());
   };
 
   // Clock face angle calculations
@@ -272,34 +259,6 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
                     borderColor: hexToRgba(theme.text, 0.12),
                   }}
                 >
-                  {/* Center Pin */}
-                  <div
-                    className="absolute w-2.5 h-2.5 rounded-full z-20 shadow-sm"
-                    style={{ backgroundColor: theme.accent }}
-                  />
-
-                  {/* Clock Hand Pointer */}
-                  <div
-                    className="absolute z-10 origin-bottom transition-all duration-200 pointer-events-none"
-                    style={{
-                      width: '2px',
-                      height: `${activeSegment === 'hours' ? hourHandLength : minuteHandLength}px`,
-                      backgroundColor: theme.accent,
-                      transform: `translateY(-50%) rotate(${
-                        activeSegment === 'hours' ? hourAngle : minuteAngle
-                      }deg)`,
-                      transformOrigin: '50% 100%',
-                      top: '50%',
-                      left: 'calc(50% - 1px)',
-                    }}
-                  >
-                    {/* Circle tip on the selected item */}
-                    <div
-                      className="absolute -top-3 -left-2.5 w-6 h-6 rounded-full opacity-25 animate-pulse"
-                      style={{ backgroundColor: theme.accent }}
-                    />
-                  </div>
-
                   {/* Dial Numbers: Hours Mode */}
                   {activeSegment === 'hours' && (
                     <>
@@ -400,10 +359,10 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
                       className="px-2.5 py-1 rounded-xl border text-[11px] hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition cursor-pointer"
                       style={{ borderColor: hexToRgba(theme.text, 0.15) }}
                     >
-                      -1 мин
+                      -1
                     </button>
                     <span className="text-xs font-mono font-bold opacity-70">
-                      {formatDigits(minutes)} мин
+                      {formatDigits(minutes)}
                     </span>
                     <button
                       type="button"
@@ -411,7 +370,7 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
                       className="px-2.5 py-1 rounded-xl border text-[11px] hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition cursor-pointer"
                       style={{ borderColor: hexToRgba(theme.text, 0.15) }}
                     >
-                      +1 мин
+                      +1
                     </button>
                   </div>
                 )}
@@ -469,46 +428,8 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
               </div>
             )}
 
-            {/* Quick Presets Row */}
-            <div className="pt-2 border-t space-y-1.5" style={{ borderColor: cardBorder }}>
-              <div className="flex items-center justify-between text-[10px] font-bold opacity-50 uppercase tracking-wider">
-                <span>Быстрый выбор</span>
-                <button
-                  type="button"
-                  onClick={setNow}
-                  className="hover:underline cursor-pointer flex items-center gap-1"
-                  style={{ color: theme.accent }}
-                >
-                  <Sparkles size={10} />
-                  <span>Сейчас</span>
-                </button>
-              </div>
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
-                {[
-                  { label: '09:00', h: 9, m: 0 },
-                  { label: '12:00', h: 12, m: 0 },
-                  { label: '15:00', h: 15, m: 0 },
-                  { label: '18:00', h: 18, m: 0 },
-                  { label: '21:00', h: 21, m: 0 },
-                ].map(preset => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => handleQuickPreset(preset.h, preset.m)}
-                    className="px-2 py-1 rounded-lg text-[11px] font-mono font-bold border transition cursor-pointer shrink-0 opacity-70 hover:opacity-100"
-                    style={{
-                      backgroundColor: hexToRgba(theme.text, 0.04),
-                      borderColor: hexToRgba(theme.text, 0.12),
-                    }}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Bottom Confirmation Action */}
-            <div className="pt-1 flex items-center gap-2">
+            <div className="pt-2 border-t flex items-center gap-2" style={{ borderColor: cardBorder }}>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}

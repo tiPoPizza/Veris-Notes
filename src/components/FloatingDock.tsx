@@ -10,6 +10,7 @@ import {
   Mic,
   Settings,
   Type,
+  Maximize2,
 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { NoteAttachment } from '../types';
@@ -32,6 +33,8 @@ export const FloatingDock: React.FC = () => {
     theme,
     language,
     quickSettings,
+    isFocusMode,
+    setIsFocusMode,
   } = useApp();
 
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState<boolean>(false);
@@ -40,7 +43,7 @@ export const FloatingDock: React.FC = () => {
   const [fontTarget, setFontTarget] = useState<'cursor' | 'title'>('cursor');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (viewMode !== 'editor') return null;
+  if (viewMode !== 'editor' || isFocusMode) return null;
 
   const t = (key: string) => getTranslation(language, key);
   const activeNote = notes.find(n => n.id === activeNoteId);
@@ -143,11 +146,13 @@ export const FloatingDock: React.FC = () => {
 
   return (
     <>
-      <AudioDictationModal
-        isOpen={isAudioModalOpen}
-        onClose={() => setIsAudioModalOpen(false)}
-        noteId={activeNoteId || ''}
-      />
+      {isAudioModalOpen && (
+        <AudioDictationModal
+          isOpen={isAudioModalOpen}
+          onClose={() => setIsAudioModalOpen(false)}
+          noteId={activeNoteId || ''}
+        />
+      )}
 
       <FontPickerModal
         isOpen={isFontModalOpen}
@@ -165,7 +170,7 @@ export const FloatingDock: React.FC = () => {
         }}
       />
 
-      <div className="fixed bottom-6 inset-x-0 z-40 pointer-events-none flex flex-col items-center justify-center px-4">
+      <div id="floating-bottom-dock" className="fixed bottom-6 inset-x-0 z-40 pointer-events-none flex flex-col items-center justify-center px-4">
         {/* Hidden File Input */}
         <input
           ref={fileInputRef}
@@ -239,6 +244,7 @@ export const FloatingDock: React.FC = () => {
 
         {/* Center Floating Toolbar */}
         <div
+          id="floating-dock-pill"
           className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl border shadow-lg backdrop-blur-xl transition-all"
           style={{
             backgroundColor: glassBg,
@@ -248,13 +254,9 @@ export const FloatingDock: React.FC = () => {
         >
           {/* Undo */}
           <button
+            onPointerDown={e => e.preventDefault()}
             onMouseDown={e => e.preventDefault()}
-            onClick={() => {
-              try {
-                document.execCommand('undo', false);
-              } catch (e) {}
-              undoNoteContent();
-            }}
+            onClick={() => undoNoteContent()}
             disabled={!canUndo}
             className={`p-2 rounded-xl transition ${
               canUndo
@@ -269,13 +271,9 @@ export const FloatingDock: React.FC = () => {
 
           {/* Redo */}
           <button
+            onPointerDown={e => e.preventDefault()}
             onMouseDown={e => e.preventDefault()}
-            onClick={() => {
-              try {
-                document.execCommand('redo', false);
-              } catch (e) {}
-              redoNoteContent();
-            }}
+            onClick={() => redoNoteContent()}
             disabled={!canRedo}
             className={`p-2 rounded-xl transition ${
               canRedo
@@ -287,8 +285,6 @@ export const FloatingDock: React.FC = () => {
           >
             <Redo2 size={16} />
           </button>
-
-          <div className="w-[1px] h-4 bg-white/20 my-auto" />
 
           {/* More / Sub-menu Toggle (3 dots) */}
           <button
@@ -302,6 +298,18 @@ export const FloatingDock: React.FC = () => {
           >
             <MoreHorizontal size={16} />
           </button>
+
+          {/* Pinned Focus Mode button (right of 3 dots) */}
+          {quickSettings.pinFocusModeToBottomBar && (
+            <button
+              onClick={() => setIsFocusMode(true)}
+              className="p-2 rounded-xl hover:bg-white/15 active:scale-90 transition cursor-pointer flex items-center justify-center"
+              style={{ color: theme.text }}
+              title="Режим фокуса"
+            >
+              <Maximize2 size={16} style={{ color: theme.accent }} />
+            </button>
+          )}
         </div>
       </div>
     </>

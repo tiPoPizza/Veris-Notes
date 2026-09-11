@@ -261,15 +261,7 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center gap-3.5">
-              <div
-                className="p-3 rounded-2xl flex items-center justify-center shrink-0"
-                style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  color: '#EF4444',
-                }}
-              >
-                <Trash2 size={22} />
-              </div>
+              <Trash2 size={24} style={{ color: theme.accent }} className="shrink-0" />
               <div>
                 <h3 className="font-extrabold text-base">Удалить вложение?</h3>
                 <p className="text-xs opacity-60 mt-0.5">
@@ -292,7 +284,11 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
               </button>
               <button
                 onClick={confirmDelete}
-                className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs text-white bg-red-500 hover:bg-red-600 active:scale-98 transition cursor-pointer shadow-lg shadow-red-500/20"
+                className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                style={{
+                  backgroundColor: theme.accent,
+                  color: accentTextColor,
+                }}
               >
                 Удалить
               </button>
@@ -317,18 +313,15 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
           onClick={e => e.stopPropagation()}
         >
           {/* Modal Header */}
-          <div className="flex items-center justify-between pb-4 border-b shrink-0 gap-3" style={{ borderColor: cardBorder }}>
+          <div className="flex items-center justify-between pb-3 shrink-0 gap-3">
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div
-                className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border"
-                style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-              >
+              <div className="shrink-0 flex items-center justify-center">
                 {isAudio ? (
-                  <Music size={20} style={{ color: theme.accent }} />
+                  <Music size={22} style={{ color: theme.accent }} />
                 ) : isImage ? (
-                  <ImageIcon size={20} style={{ color: theme.accent }} />
+                  <ImageIcon size={22} style={{ color: theme.accent }} />
                 ) : (
-                  <FileText size={20} style={{ color: theme.accent }} />
+                  <FileText size={22} style={{ color: theme.accent }} />
                 )}
               </div>
               <div className="min-w-0 flex-1">
@@ -475,7 +468,7 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
 
                 {/* Transcribed text if present */}
                 {liveAttachment.textContent && (
-                  <div className="w-full pt-3 border-t space-y-1.5" style={{ borderColor: hexToRgba(theme.text, 0.1) }}>
+                  <div className="w-full pt-2 space-y-1.5">
                     <div className="text-[11px] font-bold opacity-60 flex items-center gap-1">
                       <Sparkles size={12} style={{ color: theme.accent }} /> Текст диктовки:
                     </div>
@@ -490,7 +483,7 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
                 <img
                   src={liveAttachment.dataUrl}
                   alt={displayName}
-                  className="max-h-[50vh] max-w-full object-contain rounded-2xl shadow-lg border"
+                  className="max-h-[50vh] max-w-full object-contain rounded-2xl border shadow-none"
                   style={{ borderColor: cardBorder }}
                 />
               </div>
@@ -530,10 +523,7 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
           </div>
 
           {/* Modal Actions Footer */}
-          <div
-            className="pt-4 border-t flex items-center justify-between gap-2 shrink-0 select-none overflow-x-auto"
-            style={{ borderColor: cardBorder }}
-          >
+          <div className="pt-3 flex items-center justify-between gap-2 shrink-0 select-none overflow-x-auto">
             {/* Left Actions: Delete & Edit */}
             <div className="flex items-center gap-2 shrink-0">
               <button

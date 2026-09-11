@@ -29,6 +29,8 @@ import {
   Columns3,
   SlidersHorizontal,
   Shield,
+  Briefcase,
+  FolderSync,
 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { NoteBlock, ActionMenuItemId, SidebarTabId } from '../types';
@@ -71,9 +73,20 @@ export const Sidebar: React.FC = () => {
     openCreateKanbanColumnModal,
     openEditKanbanCardModal,
     events,
+    selectedCalendarDate,
+    setSelectedCalendarDate,
     deletedNotes,
     openTrash,
     isPrivateLocked,
+    privatePin,
+    isFocusMode,
+    workspacesEnabled,
+    workspaces,
+    activeWorkspaceId,
+    activeWorkspace,
+    switchWorkspace,
+    setIsWorkspaceModalOpen,
+    moveNotesToWorkspace,
   } = useApp();
 
   const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({});
@@ -88,6 +101,7 @@ export const Sidebar: React.FC = () => {
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
   const [isBulkTagOpen, setIsBulkTagOpen] = useState(false);
   const [isBulkBlockOpen, setIsBulkBlockOpen] = useState(false);
+  const [isBulkWorkspaceOpen, setIsBulkWorkspaceOpen] = useState(false);
   const [bulkTagSearch, setBulkTagSearch] = useState('');
   const [isBulkTrashConfirmOpen, setIsBulkTrashConfirmOpen] = useState(false);
 
@@ -104,7 +118,7 @@ export const Sidebar: React.FC = () => {
     }
   }, [selectedNoteIds.length, isBulkBlockOpen, isBulkTagOpen]);
 
-  if (!sidebarOpen) return null;
+  if (!sidebarOpen || isFocusMode) return null;
 
   const t = (key: string) => getTranslation(language, key);
   const isLight = isLightColor(theme.bg);
@@ -184,6 +198,8 @@ export const Sidebar: React.FC = () => {
                   ? 'Корзина'
                   : viewMode === 'settings'
                   ? 'Настройки'
+                  : viewMode === 'calendar'
+                  ? 'Календарь'
                   : t('notes')}
               </h2>
             </div>
@@ -209,158 +225,109 @@ export const Sidebar: React.FC = () => {
             </div>
           </div>
 
-          {/* View Switcher Tabs - Dynamic Capsule with Horizontal Scroll and No Text Truncation */}
+          {/* View Switcher Tabs - Dynamic Capsule with Horizontal Scroll, Clean Border, and No Gray Matryoshka Fill */}
           {(() => {
-            const tabsOrder: ('notes' | 'tasks' | 'kanban' | 'calendar')[] =
+            const tabsOrder: SidebarTabId[] =
               quickSettings.sidebarTabs && quickSettings.sidebarTabs.length > 0
                 ? quickSettings.sidebarTabs
                 : ['notes', 'tasks'];
 
+            const isMultiTab = tabsOrder.length > 2;
+
+            const tabConfig: Record<SidebarTabId, {
+              label: string;
+              icon: React.ReactNode;
+              isSelected: boolean;
+              onClick: () => void;
+            }> = {
+              notes: {
+                label: t('notes'),
+                icon: <FileText size={14} className="shrink-0" />,
+                isSelected: viewMode === 'notes' || viewMode === 'editor',
+                onClick: () => {
+                  setViewMode('notes');
+                  setShowActionTiles(false);
+                  setSidebarOpen(false);
+                },
+              },
+              tasks: {
+                label: t('tasks'),
+                icon: <CheckSquare size={14} className="shrink-0" />,
+                isSelected: viewMode === 'tasks',
+                onClick: () => {
+                  setViewMode('tasks');
+                  setShowActionTiles(false);
+                  setSidebarOpen(false);
+                },
+              },
+              kanban: {
+                label: 'Канбан',
+                icon: <Columns3 size={14} className="shrink-0" />,
+                isSelected: viewMode === 'kanban',
+                onClick: () => {
+                  setViewMode('kanban');
+                  setShowActionTiles(false);
+                  setSidebarOpen(false);
+                },
+              },
+              calendar: {
+                label: 'Календарь',
+                icon: <CalendarIcon size={14} className="shrink-0" />,
+                isSelected: viewMode === 'calendar',
+                onClick: () => {
+                  setViewMode('calendar');
+                  setShowActionTiles(false);
+                  setSidebarOpen(false);
+                },
+              },
+              private: {
+                label: 'Приват',
+                icon: <Shield size={14} className="shrink-0" />,
+                isSelected: viewMode === 'private',
+                onClick: () => {
+                  setViewMode('private');
+                  setShowActionTiles(false);
+                  setSidebarOpen(false);
+                },
+              },
+            };
+
             return (
               <div
-                className="flex items-center gap-1 p-1 rounded-2xl border shrink-0 overflow-x-auto no-scrollbar scroll-smooth"
+                className="flex items-center gap-1.5 p-1 rounded-2xl border shrink-0 overflow-x-auto no-scrollbar scroll-smooth touch-pan-x"
                 style={{
-                  backgroundColor: cardBg,
+                  backgroundColor: 'transparent',
                   borderColor: cardBorder,
                 }}
               >
                 {tabsOrder.map(tabId => {
-                  if (tabId === 'notes') {
-                    const isSelected = viewMode === 'notes' || viewMode === 'editor';
-                    return (
-                      <button
-                        key="notes"
-                        onClick={() => {
-                          setViewMode('notes');
-                          setShowActionTiles(false);
-                        }}
-                        className={`flex-1 min-w-[76px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                          isSelected ? 'shadow-xs' : 'opacity-60 hover:opacity-100'
-                        }`}
-                        style={{
-                          backgroundColor: isSelected
-                            ? isLight
-                              ? '#FFFFFF'
-                              : 'rgba(255, 255, 255, 0.14)'
-                            : 'transparent',
-                          color: isSelected ? theme.accent : theme.text,
-                        }}
-                      >
-                        <FileText size={14} className="shrink-0" />
-                        <span className="whitespace-nowrap">{t('notes')}</span>
-                      </button>
-                    );
-                  }
+                  const tab = tabConfig[tabId];
+                  if (!tab) return null;
 
-                  if (tabId === 'tasks') {
-                    const isSelected = viewMode === 'tasks';
-                    return (
-                      <button
-                        key="tasks"
-                        onClick={() => {
-                          setViewMode('tasks');
-                          setShowActionTiles(false);
-                        }}
-                        className={`flex-1 min-w-[76px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                          isSelected ? 'shadow-xs' : 'opacity-60 hover:opacity-100'
-                        }`}
-                        style={{
-                          backgroundColor: isSelected
-                            ? isLight
-                              ? '#FFFFFF'
-                              : 'rgba(255, 255, 255, 0.14)'
-                            : 'transparent',
-                          color: isSelected ? theme.accent : theme.text,
-                        }}
-                      >
-                        <CheckSquare size={14} className="shrink-0" />
-                        <span className="whitespace-nowrap">{t('tasks')}</span>
-                      </button>
-                    );
-                  }
-
-                  if (tabId === 'kanban') {
-                    const isSelected = viewMode === 'kanban';
-                    return (
-                      <button
-                        key="kanban"
-                        onClick={() => {
-                          setViewMode('kanban');
-                          setShowActionTiles(false);
-                        }}
-                        className={`flex-1 min-w-[76px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                          isSelected ? 'shadow-xs' : 'opacity-60 hover:opacity-100'
-                        }`}
-                        style={{
-                          backgroundColor: isSelected
-                            ? isLight
-                              ? '#FFFFFF'
-                              : 'rgba(255, 255, 255, 0.14)'
-                            : 'transparent',
-                          color: isSelected ? theme.accent : theme.text,
-                        }}
-                      >
-                        <Columns3 size={14} className="shrink-0" />
-                        <span className="whitespace-nowrap">Канбан</span>
-                      </button>
-                    );
-                  }
-
-                  if (tabId === 'calendar') {
-                    const isSelected = viewMode === 'calendar';
-                    return (
-                      <button
-                        key="calendar"
-                        onClick={() => {
-                          setViewMode('calendar');
-                          setShowActionTiles(false);
-                        }}
-                        className={`flex-1 min-w-[76px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                          isSelected ? 'shadow-xs' : 'opacity-60 hover:opacity-100'
-                        }`}
-                        style={{
-                          backgroundColor: isSelected
-                            ? isLight
-                              ? '#FFFFFF'
-                              : 'rgba(255, 255, 255, 0.14)'
-                            : 'transparent',
-                          color: isSelected ? theme.accent : theme.text,
-                        }}
-                      >
-                        <CalendarIcon size={14} className="shrink-0" />
-                        <span className="whitespace-nowrap">Календарь</span>
-                      </button>
-                    );
-                  }
-
-                  if (tabId === 'private') {
-                    const isSelected = viewMode === 'private';
-                    return (
-                      <button
-                        key="private"
-                        onClick={() => {
-                          setViewMode('private');
-                          setShowActionTiles(false);
-                        }}
-                        className={`flex-1 min-w-[76px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                          isSelected ? 'shadow-xs' : 'opacity-60 hover:opacity-100'
-                        }`}
-                        style={{
-                          backgroundColor: isSelected
-                            ? isLight
-                              ? '#FFFFFF'
-                              : 'rgba(255, 255, 255, 0.14)'
-                            : 'transparent',
-                          color: isSelected ? theme.accent : theme.text,
-                        }}
-                      >
-                        <Shield size={14} className="shrink-0" />
-                        <span className="whitespace-nowrap">Приват</span>
-                      </button>
-                    );
-                  }
-
-                  return null;
+                  return (
+                    <button
+                      key={tabId}
+                      onClick={tab.onClick}
+                      className={`${
+                        isMultiTab
+                          ? 'shrink-0 min-w-max'
+                          : 'flex-1 min-w-0 shrink-0'
+                      } flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        tab.isSelected ? 'shadow-xs' : 'opacity-60 hover:opacity-100'
+                      }`}
+                      style={{
+                        backgroundColor: tab.isSelected
+                          ? isLight
+                            ? '#FFFFFF'
+                            : 'rgba(255, 255, 255, 0.15)'
+                          : 'transparent',
+                        color: tab.isSelected ? theme.accent : theme.text,
+                      }}
+                    >
+                      {tab.icon}
+                      <span className="whitespace-nowrap shrink-0">{tab.label}</span>
+                    </button>
+                  );
                 })}
               </div>
             );
@@ -402,6 +369,7 @@ export const Sidebar: React.FC = () => {
                     onClick: () => {
                       setViewMode('kanban');
                       setShowActionTiles(false);
+                      setSidebarOpen(false);
                     },
                   },
                   private: {
@@ -411,6 +379,7 @@ export const Sidebar: React.FC = () => {
                     onClick: () => {
                       setViewMode('private');
                       setShowActionTiles(false);
+                      setSidebarOpen(false);
                     },
                   },
                   trash: {
@@ -420,6 +389,7 @@ export const Sidebar: React.FC = () => {
                     onClick: () => {
                       openTrash(isPrivateSpace ? 'private' : 'public');
                       setShowActionTiles(false);
+                      setSidebarOpen(false);
                     },
                   },
                   settings: {
@@ -429,6 +399,7 @@ export const Sidebar: React.FC = () => {
                     onClick: () => {
                       setViewMode('settings');
                       setShowActionTiles(false);
+                      setSidebarOpen(false);
                     },
                   },
                   ai: {
@@ -438,6 +409,7 @@ export const Sidebar: React.FC = () => {
                     onClick: () => {
                       setIsAIPromptOpen(true);
                       setShowActionTiles(false);
+                      setSidebarOpen(false);
                     },
                   },
                   webSearch: {
@@ -447,6 +419,7 @@ export const Sidebar: React.FC = () => {
                     onClick: () => {
                       setIsWebSearchOpen(true);
                       setShowActionTiles(false);
+                      setSidebarOpen(false);
                     },
                   },
                   notes: {
@@ -456,6 +429,7 @@ export const Sidebar: React.FC = () => {
                     onClick: () => {
                       setViewMode('notes');
                       setShowActionTiles(false);
+                      setSidebarOpen(false);
                     },
                   },
                   tasks: {
@@ -465,6 +439,7 @@ export const Sidebar: React.FC = () => {
                     onClick: () => {
                       setViewMode('tasks');
                       setShowActionTiles(false);
+                      setSidebarOpen(false);
                     },
                   },
                 };
@@ -479,14 +454,14 @@ export const Sidebar: React.FC = () => {
                         <button
                           key={item.id}
                           onClick={item.onClick}
-                          className="w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer group"
+                          className="w-full flex items-center gap-3.5 p-3 rounded-2xl border text-left transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer group"
                           style={{ backgroundColor: cardBg, borderColor: cardBorder }}
                         >
                           <div
-                            className="w-10 h-10 rounded-full flex items-center justify-center transition group-hover:scale-105 shrink-0"
-                            style={{ backgroundColor: hexToRgba(theme.text, 0.08), color: theme.text }}
+                            className="w-6 flex items-center justify-center transition group-hover:scale-110 shrink-0"
+                            style={{ color: theme.text }}
                           >
-                            <IconComp size={18} />
+                            <IconComp size={22} />
                           </div>
                           <span className="text-xs font-extrabold truncate" style={{ color: theme.text }}>
                             {item.label}
@@ -509,10 +484,10 @@ export const Sidebar: React.FC = () => {
                           style={{ backgroundColor: cardBg, borderColor: cardBorder }}
                         >
                           <div
-                            className="w-11 h-11 rounded-full flex items-center justify-center mb-2 transition group-hover:scale-110 opacity-80 group-hover:opacity-100"
-                            style={{ backgroundColor: hexToRgba(theme.text, 0.08), color: theme.text }}
+                            className="flex items-center justify-center mb-2 transition group-hover:scale-110 opacity-90 group-hover:opacity-100"
+                            style={{ color: theme.text }}
                           >
-                            <IconComp size={20} />
+                            <IconComp size={24} />
                           </div>
                           <span className="text-xs font-extrabold" style={{ color: theme.text }}>
                             {item.label}
@@ -524,18 +499,18 @@ export const Sidebar: React.FC = () => {
                 );
               })()}
 
-              {/* Configure Button ("Настроить") */}
+              {/* Configure Button ("Настроить") - Low contrast, subtle styling */}
               <button
                 type="button"
                 onClick={() => setIsActionMenuSettingsOpen(true)}
-                className="w-full py-2.5 px-3 rounded-2xl border flex items-center justify-center gap-2 text-xs font-black transition cursor-pointer hover:opacity-90 active:scale-98 shadow-xs"
+                className="w-full py-2 px-3 rounded-2xl border flex items-center justify-center gap-2 text-xs font-semibold opacity-60 hover:opacity-100 transition cursor-pointer active:scale-98"
                 style={{
-                  backgroundColor: hexToRgba(theme.text, 0.04),
+                  backgroundColor: 'transparent',
                   borderColor: cardBorder,
                   color: theme.text,
                 }}
               >
-                <SlidersHorizontal size={14} style={{ color: theme.accent }} />
+                <SlidersHorizontal size={14} className="opacity-75" />
                 <span>Настроить</span>
               </button>
             </div>
@@ -595,8 +570,7 @@ export const Sidebar: React.FC = () => {
                       e.stopPropagation();
                       setIsCreateDropdownOpen(!isCreateDropdownOpen);
                     }}
-                    className="p-3.5 hover:bg-black/10 transition cursor-pointer border-l"
-                    style={{ borderColor: 'rgba(255, 255, 255, 0.2)' }}
+                    className="p-3.5 hover:bg-black/10 transition cursor-pointer"
                     title="Меню создания"
                   >
                     <ChevronDown
@@ -790,6 +764,7 @@ export const Sidebar: React.FC = () => {
                               onClick={() => {
                                 setActiveTaskId(list.id);
                                 setViewMode('tasks');
+                                setSidebarOpen(false);
                               }}
                               className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                                 isSelected
@@ -825,160 +800,301 @@ export const Sidebar: React.FC = () => {
                   )}
                 </div>
               ) : viewMode === 'calendar' ? (
-                <div
-                  className="p-3 rounded-2xl border space-y-2.5"
-                  style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-bold opacity-90">
-                      <CalendarIcon size={14} style={{ color: theme.accent }} />
-                      <span>Календарь</span>
-                    </div>
-                    <span className="text-[10px] opacity-50 font-bold">
-                      {events.filter(e => !e.deleted).length}
-                    </span>
-                  </div>
-                  <div className="text-xs opacity-75 font-medium leading-relaxed">
-                    Всего событий: {events.filter(e => !e.deleted).length}
-                  </div>
-                  <button
-                    onClick={() => {
+                /* Calendar View: Events grouped by Day (Today, Future, Past) */
+                <div className="space-y-4">
+                  {(() => {
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const activeEvents = events.filter(e => !e.deleted && e.date);
+
+                    // Map events by date
+                    const eventsByDate: Record<string, typeof events> = {};
+                    for (const ev of activeEvents) {
+                      if (!eventsByDate[ev.date]) eventsByDate[ev.date] = [];
+                      eventsByDate[ev.date].push(ev);
+                    }
+
+                    // Format helpers
+                    const formatSidebarDate = (dateStr: string, isTodayDate: boolean) => {
+                      if (!dateStr) return '';
+                      const parts = dateStr.split('-');
+                      if (parts.length !== 3) return dateStr;
+                      const y = parseInt(parts[0], 10);
+                      const m = parseInt(parts[1], 10) - 1;
+                      const d = parseInt(parts[2], 10);
+                      const dateObj = new Date(y, m, d);
+                      const weekdays = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+                      const months = [
+                        'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                        'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+                      ];
+                      const weekday = weekdays[dateObj.getDay()];
+                      const currentYear = now.getFullYear();
+                      const yearStr = y !== currentYear ? ` ${y}` : '';
+
+                      if (isTodayDate) {
+                        return `Сегодня, ${d} ${months[m]}${yearStr}`;
+                      }
+                      return `${d} ${months[m]}${yearStr}, ${weekday}`;
+                    };
+
+                    const formatEventCount = (count: number) => {
+                      if (count === 0) return '0 событий';
+                      const mod10 = count % 10;
+                      const mod100 = count % 100;
+                      if (mod100 >= 11 && mod100 <= 19) return `${count} событий`;
+                      if (mod10 === 1) return `${count} событие`;
+                      if (mod10 >= 2 && mod10 <= 4) return `${count} события`;
+                      return `${count} событий`;
+                    };
+
+                    const handleSelectDay = (dateStr: string) => {
+                      setSelectedCalendarDate(dateStr);
                       setViewMode('calendar');
                       setSidebarOpen(false);
-                    }}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer hover:opacity-90 active:scale-98"
-                    style={{
-                      backgroundColor: hexToRgba(theme.accent, 0.15),
-                      color: theme.accent,
-                    }}
-                  >
-                    <CalendarIcon size={14} />
-                    <span>Открыть календарь</span>
-                  </button>
+                    };
+
+                    // Future dates with events: sorted ascending ("чем раньше, тем выше")
+                    const futureDates = Object.keys(eventsByDate)
+                      .filter(d => d > todayStr)
+                      .sort((a, b) => a.localeCompare(b));
+
+                    // Past dates with events: sorted descending (most recent past first)
+                    const pastDates = Object.keys(eventsByDate)
+                      .filter(d => d < todayStr)
+                      .sort((a, b) => b.localeCompare(a));
+
+                    const todayEventCount = eventsByDate[todayStr]?.length || 0;
+
+                    // Render Day Tile Component with generous air and subtle button
+                    const renderDayTile = (dateStr: string, isTodayDate: boolean) => {
+                      const count = eventsByDate[dateStr]?.length || 0;
+                      const isSelected = selectedCalendarDate === dateStr;
+
+                      return (
+                        <div
+                          key={dateStr}
+                          onClick={() => handleSelectDay(dateStr)}
+                          className={`py-4 px-4 sm:py-4.5 sm:px-4.5 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between gap-4 ${
+                            isSelected
+                              ? 'shadow-xs'
+                              : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05] hover:shadow-xs'
+                          }`}
+                          style={{
+                            backgroundColor: cardBg,
+                            borderColor: isSelected ? theme.accent : cardBorder,
+                            boxShadow: isSelected ? `inset 0 0 0 1.5px ${theme.accent}` : undefined,
+                          }}
+                        >
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <h4
+                              className="text-sm font-extrabold truncate tracking-tight"
+                              style={{ color: theme.text }}
+                            >
+                              {isTodayDate ? 'Сегодня' : formatSidebarDate(dateStr, false)}
+                            </h4>
+                            <div className="text-xs opacity-50 font-medium tracking-normal">
+                              {formatEventCount(count)}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              handleSelectDay(dateStr);
+                            }}
+                            className="flex items-center gap-1.5 py-2 px-3.5 rounded-xl text-xs font-semibold border transition cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 shrink-0"
+                            style={{
+                              borderColor: hexToRgba(theme.text, 0.14),
+                              color: theme.text,
+                            }}
+                          >
+                            <span className="opacity-85">Перейти</span>
+                            <ChevronRight size={13} className="opacity-40" />
+                          </button>
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <div className="space-y-5 px-1 py-0.5">
+                        {/* 1. В самом верху — Сегодня */}
+                        <div className="space-y-2.5">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-[10px] font-black uppercase tracking-wider opacity-40">
+                              Сегодня
+                            </span>
+                            <span className="text-[10px] font-bold opacity-40">
+                              {todayEventCount > 0 ? formatEventCount(todayEventCount) : '0 событий'}
+                            </span>
+                          </div>
+                          {renderDayTile(todayStr, true)}
+                        </div>
+
+                        {/* 2. Ниже — будущие (чем раньше, тем выше) */}
+                        {futureDates.length > 0 && (
+                          <div className="space-y-2.5 pt-1">
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-[10px] font-black uppercase tracking-wider opacity-40">
+                                Предстоящие
+                              </span>
+                              <span className="text-[10px] font-bold opacity-40">
+                                {futureDates.length} {futureDates.length === 1 ? 'день' : futureDates.length < 5 ? 'дня' : 'дней'}
+                              </span>
+                            </div>
+                            <div className="space-y-3">
+                              {futureDates.map(dateStr => renderDayTile(dateStr, false))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 3. В самом низу — прошедшие */}
+                        {pastDates.length > 0 && (
+                          <div className="space-y-2.5 pt-1">
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-[10px] font-black uppercase tracking-wider opacity-40">
+                                Прошедшие
+                              </span>
+                              <span className="text-[10px] font-bold opacity-40">
+                                {pastDates.length} {pastDates.length === 1 ? 'день' : pastDates.length < 5 ? 'дня' : 'дней'}
+                              </span>
+                            </div>
+                            <div className="space-y-3">
+                              {pastDates.map(dateStr => renderDayTile(dateStr, false))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Empty notice if no other days */}
+                        {futureDates.length === 0 && pastDates.length === 0 && todayEventCount === 0 && (
+                          <div className="p-4 rounded-2xl border text-center opacity-40 text-xs py-5" style={{ borderColor: cardBorder }}>
+                            В календаре пока нет других запланированных событий
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 /* Notes View: Dynamic Blocks Rendering */
                 <div className="space-y-2.5">
-                  {blocks.map((block, blockIndex) => {
-                    const blockNotes = getNotesForBlock(block);
-                    // RULE 1: If block has no notes, do not display it!
-                    if (blockNotes.length === 0) return null;
+                  {(() => {
+                    const visibleBlocks = blocks.filter(b => getNotesForBlock(b).length > 0);
+                    return visibleBlocks.map((block, visibleIndex) => {
+                      const blockNotes = getNotesForBlock(block);
+                      const isCollapsed = collapsedBlocks[block.id] || false;
+                      const isMenuOpen = activeBlockMenuId === block.id;
+                      const rawIndex = blocks.findIndex(b => b.id === block.id);
+                      // Open bottom-full only if it's the last item in a list with at least 3 blocks
+                      const shouldOpenUpwards = visibleIndex >= 2 && visibleIndex === visibleBlocks.length - 1;
 
-                    const isCollapsed = collapsedBlocks[block.id] || false;
-                    const isMenuOpen = activeBlockMenuId === block.id;
-
-                    return (
-                      <div
-                        key={block.id}
-                        className="p-3 rounded-2xl border space-y-2 relative"
-                        style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-                      >
-                        {/* Block Header */}
-                        <div className="flex items-center justify-between">
-                          <button
-                            onClick={() => toggleBlockCollapse(block.id)}
-                            className="flex items-center gap-1.5 text-xs font-bold opacity-90 hover:opacity-100 transition cursor-pointer truncate flex-1 pr-1"
-                          >
-                            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                            <span className="truncate">{block.name}</span>
-                            <span className="text-[10px] opacity-50 ml-1 font-semibold">{blockNotes.length}</span>
-                          </button>
-
-                          {/* 3-dots Menu trigger for block */}
-                          <div className="relative">
+                      return (
+                        <div
+                          key={block.id}
+                          className={`p-3 rounded-2xl border space-y-2 relative transition-all ${
+                            isMenuOpen ? 'z-40 shadow-md' : 'z-10'
+                          }`}
+                          style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+                        >
+                          {/* Block Header */}
+                          <div className="flex items-center justify-between">
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveBlockMenuId(isMenuOpen ? null : block.id);
-                              }}
-                              className="p-1 rounded-lg opacity-60 hover:opacity-100 hover:bg-white/10 transition cursor-pointer"
-                              title="Опции блока"
+                              onClick={() => toggleBlockCollapse(block.id)}
+                              className="flex items-center gap-1.5 text-xs font-bold opacity-90 hover:opacity-100 transition cursor-pointer truncate flex-1 pr-1"
                             >
-                              <MoreHorizontal size={14} />
+                              {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                              <span className={`truncate ${quickSettings.uppercaseBlockNames ? 'uppercase' : ''}`}>{block.name}</span>
+                              <span className="text-[10px] opacity-50 ml-1 font-semibold">{blockNotes.length}</span>
                             </button>
 
-                            {/* Block Action Menu Popover */}
-                            {isMenuOpen && (
-                              <div
-                                className={`absolute right-0 ${
-                                  blockIndex >= Math.max(1, blocks.length - 2)
-                                    ? 'bottom-full mb-1'
-                                    : 'top-full mt-1'
-                                } w-44 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-2xl z-50 flex flex-col gap-0.5 text-xs font-bold animate-fadeIn`}
-                                style={{
-                                  backgroundColor: isLight ? 'rgba(255, 255, 255, 0.98)' : hexToRgba(theme.bg, 0.98),
-                                  borderColor: hexToRgba(theme.text, 0.15),
-                                  color: theme.text,
+                            {/* 3-dots Menu trigger for block */}
+                            <div className="relative">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveBlockMenuId(isMenuOpen ? null : block.id);
                                 }}
-                                onClick={(e) => e.stopPropagation()}
+                                className="p-1 rounded-lg opacity-60 hover:opacity-100 hover:bg-white/10 transition cursor-pointer"
+                                title="Опции блока"
                               >
-                                <button
-                                  disabled={blockIndex === 0}
-                                  onClick={() => {
-                                    moveBlock(block.id, 'up');
-                                    setActiveBlockMenuId(null);
+                                <MoreHorizontal size={14} />
+                              </button>
+
+                              {/* Block Action Menu Popover */}
+                              {isMenuOpen && (
+                                <div
+                                  className={`absolute right-0 ${
+                                    shouldOpenUpwards
+                                      ? 'bottom-full mb-1'
+                                      : 'top-full mt-1'
+                                  } w-48 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-2xl z-50 flex flex-col gap-0.5 text-xs font-bold animate-fadeIn`}
+                                  style={{
+                                    backgroundColor: isLight ? 'rgba(255, 255, 255, 0.98)' : hexToRgba(theme.bg, 0.98),
+                                    borderColor: hexToRgba(theme.text, 0.15),
+                                    color: theme.text,
                                   }}
-                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl transition text-left cursor-pointer ${
-                                    blockIndex === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 active:scale-98'
-                                  }`}
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  {quickSettings.horizontalMainMenu ? (
-                                    <ArrowLeft size={13} style={{ color: theme.accent }} />
-                                  ) : (
+                                  <button
+                                    disabled={rawIndex <= 0}
+                                    onClick={() => {
+                                      moveBlock(block.id, 'up');
+                                      setActiveBlockMenuId(null);
+                                    }}
+                                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl transition text-left cursor-pointer ${
+                                      rawIndex <= 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 active:scale-98'
+                                    }`}
+                                  >
                                     <ArrowUp size={13} style={{ color: theme.accent }} />
-                                  )}
-                                  <span>{quickSettings.horizontalMainMenu ? 'Переместить влево' : 'Переместить вверх'}</span>
-                                </button>
+                                    <span>Переместить вверх</span>
+                                  </button>
 
-                                <button
-                                  disabled={blockIndex === blocks.length - 1}
-                                  onClick={() => {
-                                    moveBlock(block.id, 'down');
-                                    setActiveBlockMenuId(null);
-                                  }}
-                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl transition text-left cursor-pointer ${
-                                    blockIndex === blocks.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 active:scale-98'
-                                  }`}
-                                >
-                                  {quickSettings.horizontalMainMenu ? (
-                                    <ArrowRight size={13} style={{ color: theme.accent }} />
-                                  ) : (
+                                  <button
+                                    disabled={rawIndex >= blocks.length - 1}
+                                    onClick={() => {
+                                      moveBlock(block.id, 'down');
+                                      setActiveBlockMenuId(null);
+                                    }}
+                                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl transition text-left cursor-pointer ${
+                                      rawIndex >= blocks.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 active:scale-98'
+                                    }`}
+                                  >
                                     <ArrowDown size={13} style={{ color: theme.accent }} />
+                                    <span>Переместить вниз</span>
+                                  </button>
+
+                                  {block.type === 'custom' && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          openCreateBlockModal([], block);
+                                          setActiveBlockMenuId(null);
+                                        }}
+                                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-white/10 active:scale-98 transition text-left cursor-pointer"
+                                      >
+                                        <Edit2 size={13} style={{ color: theme.accent }} />
+                                        <span>Переименовать</span>
+                                      </button>
+
+                                      <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
+
+                                      <button
+                                        onClick={() => {
+                                          openDeleteBlockModal(block);
+                                          setActiveBlockMenuId(null);
+                                        }}
+                                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-red-500/20 active:scale-98 transition text-left text-red-400 cursor-pointer"
+                                      >
+                                        <Trash2 size={13} />
+                                        <span>Удалить блок</span>
+                                      </button>
+                                    </>
                                   )}
-                                  <span>{quickSettings.horizontalMainMenu ? 'Переместить вправо' : 'Переместить вниз'}</span>
-                                </button>
-
-                                {block.type === 'custom' && (
-                                  <>
-                                    <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
-                                    
-                                    <button
-                                      onClick={() => {
-                                        openCreateBlockModal([], block);
-                                        setActiveBlockMenuId(null);
-                                      }}
-                                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-white/10 active:scale-98 transition text-left cursor-pointer"
-                                    >
-                                      <Edit2 size={13} style={{ color: theme.accent }} />
-                                      <span>Переименовать</span>
-                                    </button>
-
-                                    <button
-                                      onClick={() => {
-                                        openDeleteBlockModal(block);
-                                        setActiveBlockMenuId(null);
-                                      }}
-                                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-red-500/20 active:scale-98 transition text-left text-red-400 cursor-pointer"
-                                    >
-                                      <Trash2 size={13} />
-                                      <span>Удалить блок</span>
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            )}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
                         {/* Notes in Block */}
                         {!isCollapsed && (
@@ -992,6 +1108,7 @@ export const Sidebar: React.FC = () => {
                                   onClick={() => {
                                     setActiveNoteId(note.id);
                                     setViewMode('editor');
+                                    setSidebarOpen(false);
                                   }}
                                   className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                                     isSelected
@@ -1047,7 +1164,8 @@ export const Sidebar: React.FC = () => {
                         )}
                       </div>
                     );
-                  })}
+                  })
+                })()}
                 </div>
               )}
           </div>
@@ -1093,6 +1211,7 @@ export const Sidebar: React.FC = () => {
                     onClick={() => {
                       setIsBulkBlockOpen(!isBulkBlockOpen);
                       setIsBulkTagOpen(false);
+                      setIsBulkWorkspaceOpen(false);
                     }}
                     className="h-8 px-2 shrink-0 flex items-center gap-1 rounded-xl border text-[11px] font-bold transition cursor-pointer hover:opacity-80 active:scale-95"
                     style={{
@@ -1105,6 +1224,27 @@ export const Sidebar: React.FC = () => {
                     <Layers size={13} />
                     <span className="hidden sm:inline">В блок</span>
                   </button>
+
+                  {/* Mass move to Workspace button (if workspaces enabled & > 1 workspace) */}
+                  {workspacesEnabled && workspaces.length > 1 && (
+                    <button
+                      onClick={() => {
+                        setIsBulkWorkspaceOpen(!isBulkWorkspaceOpen);
+                        setIsBulkBlockOpen(false);
+                        setIsBulkTagOpen(false);
+                      }}
+                      className="h-8 px-2 shrink-0 flex items-center gap-1 rounded-xl border text-[11px] font-bold transition cursor-pointer hover:opacity-80 active:scale-95"
+                      style={{
+                        backgroundColor: isBulkWorkspaceOpen ? theme.accent : 'transparent',
+                        borderColor: isBulkWorkspaceOpen ? theme.accent : hexToRgba(theme.text, 0.25),
+                        color: isBulkWorkspaceOpen ? (isLightColor(theme.accent) ? '#000000' : '#ffffff') : theme.text,
+                      }}
+                      title="Перенести в другой воркспейс"
+                    >
+                      <FolderSync size={13} />
+                      <span className="hidden sm:inline">В воркспейс</span>
+                    </button>
+                  )}
 
                   {/* Pin / Unpin Button */}
                   {(() => {
@@ -1185,20 +1325,22 @@ export const Sidebar: React.FC = () => {
                       </button>
                     ))}
 
-                    {/* Private Space Option */}
-                    <button
-                      onClick={() => {
-                        selectedNoteIds.forEach(id => {
-                          updateNote(id, { isPrivate: true });
-                        });
-                        setSelectedNoteIds([]);
-                        setIsBulkBlockOpen(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-white/10 active:scale-98 transition text-left cursor-pointer"
-                    >
-                      <Shield size={12} style={{ color: theme.accent }} />
-                      <span className="truncate flex-1 font-semibold">Приватное пространство</span>
-                    </button>
+                    {/* Private Space Option - Only shown if private space is enabled */}
+                    {Boolean(privatePin) && (
+                      <button
+                        onClick={() => {
+                          selectedNoteIds.forEach(id => {
+                            updateNote(id, { isPrivate: true });
+                          });
+                          setSelectedNoteIds([]);
+                          setIsBulkBlockOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-white/10 active:scale-98 transition text-left cursor-pointer"
+                      >
+                        <Shield size={12} style={{ color: theme.accent }} />
+                        <span className="truncate flex-1 font-semibold">Приватное пространство</span>
+                      </button>
+                    )}
 
                     <div className="h-px my-1" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
 
@@ -1213,6 +1355,29 @@ export const Sidebar: React.FC = () => {
                       <Plus size={13} />
                       <span>Создать новый</span>
                     </button>
+                  </div>
+                )}
+
+                {/* Inline "В воркспейс" Popover */}
+                {isBulkWorkspaceOpen && workspacesEnabled && (
+                  <div className="pt-2 border-t space-y-1 animate-fadeIn max-h-36 overflow-y-auto" style={{ borderColor: hexToRgba(theme.text, 0.1) }}>
+                    <div className="text-[10px] font-bold uppercase opacity-50 px-1">Выберите воркспейс:</div>
+                    {workspaces
+                      .filter(ws => ws.id !== activeWorkspaceId)
+                      .map(ws => (
+                        <button
+                          key={ws.id}
+                          onClick={async () => {
+                            await moveNotesToWorkspace(selectedNoteIds, ws.id);
+                            setSelectedNoteIds([]);
+                            setIsBulkWorkspaceOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-white/10 active:scale-98 transition text-left cursor-pointer"
+                        >
+                          <FolderSync size={12} style={{ color: theme.accent }} />
+                          <span className="truncate flex-1 font-semibold">{ws.name}</span>
+                        </button>
+                      ))}
                   </div>
                 )}
 
@@ -1311,15 +1476,7 @@ export const Sidebar: React.FC = () => {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex items-center gap-3.5">
-                <div
-                  className="p-3 rounded-2xl flex items-center justify-center shrink-0"
-                  style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                    color: '#EF4444',
-                  }}
-                >
-                  <Trash2 size={22} />
-                </div>
+                <Trash2 size={24} style={{ color: theme.accent }} className="shrink-0" />
                 <div>
                   <h3 className="font-extrabold text-base">Переместить в корзину?</h3>
                   <p className="text-xs opacity-60 mt-0.5">
@@ -1349,7 +1506,11 @@ export const Sidebar: React.FC = () => {
                     setIsBulkTagOpen(false);
                     setIsBulkTrashConfirmOpen(false);
                   }}
-                  className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs text-white bg-red-500 hover:bg-red-600 active:scale-98 transition cursor-pointer shadow-lg shadow-red-500/20"
+                  className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                  style={{
+                    backgroundColor: theme.accent,
+                    color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
+                  }}
                 >
                   Да
                 </button>

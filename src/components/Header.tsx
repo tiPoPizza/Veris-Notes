@@ -19,6 +19,10 @@ import {
   Download,
   Share2,
   Shield,
+  Maximize2,
+  ChevronRight,
+  Layers,
+  Plus,
 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { stripHtmlTags } from '../utils/textUtils';
@@ -51,14 +55,26 @@ export const Header: React.FC = () => {
     sidebarOpen,
     setSidebarOpen,
     privatePin,
+    trashPrivacyMode,
     theme,
     language,
     quickSettings,
+    isFocusMode,
+    setIsFocusMode,
+    workspacesEnabled,
+    workspaces,
+    activeWorkspaceId,
+    activeWorkspace,
+    switchWorkspace,
+    moveNoteToWorkspace,
+    setIsWorkspaceModalOpen,
+    blocks,
+    openCreateBlockModal,
   } = useApp();
 
   const [isEditorMenuOpen, setIsEditorMenuOpen] = useState(false);
   const [isQuickActionsMenuOpen, setIsQuickActionsMenuOpen] = useState(false);
-  const [editorMenuTab, setEditorMenuTab] = useState<'main' | 'tags'>('main');
+  const [editorMenuTab, setEditorMenuTab] = useState<'main' | 'tags' | 'blocks'>('main');
   const [tagSearchQuery, setTagSearchQuery] = useState('');
   const [isTrashConfirmOpen, setIsTrashConfirmOpen] = useState(false);
   const [copiedToast, setCopiedToast] = useState<string | null>(null);
@@ -159,15 +175,7 @@ export const Header: React.FC = () => {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center gap-3.5">
-              <div
-                className="p-3 rounded-2xl flex items-center justify-center shrink-0"
-                style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  color: '#EF4444',
-                }}
-              >
-                <Trash2 size={22} />
-              </div>
+              <Trash2 size={24} style={{ color: theme.accent }} className="shrink-0" />
               <div>
                 <h3 className="font-extrabold text-base">Переместить в корзину?</h3>
                 <p className="text-xs opacity-60 mt-0.5">
@@ -195,7 +203,11 @@ export const Header: React.FC = () => {
                   setViewMode(wasPrivate ? 'private' : 'notes');
                   setIsTrashConfirmOpen(false);
                 }}
-                className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs text-white bg-red-500 hover:bg-red-600 active:scale-98 transition cursor-pointer shadow-lg shadow-red-500/20"
+                className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                style={{
+                  backgroundColor: theme.accent,
+                  color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
+                }}
               >
                 Да
               </button>
@@ -205,46 +217,83 @@ export const Header: React.FC = () => {
       )}
 
       {/* Fixed Top-Left Floating Controls */}
-      <div className="fixed top-4 left-4 z-40 flex items-center pointer-events-auto">
-        <div
-          className="flex items-center gap-1 p-1 rounded-2xl border shadow-lg backdrop-blur-xl"
-          style={{
-            backgroundColor: glassBg,
-            borderColor: glassBorder,
-          }}
-        >
-          {!sidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-xl hover:bg-white/10 active:scale-95 transition flex items-center justify-center cursor-pointer"
-              style={{ color: theme.text }}
-              title="Открыть боковое меню"
-            >
-              <LayoutGrid size={18} />
-            </button>
-          )}
+      {!isFocusMode && (
+        <div className="fixed top-4 left-4 z-40 flex items-center pointer-events-auto">
+          <div
+            className="flex items-center gap-1 p-1 rounded-2xl border shadow-lg backdrop-blur-xl"
+            style={{
+              backgroundColor: glassBg,
+              borderColor: glassBorder,
+            }}
+          >
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-2 rounded-xl hover:bg-white/10 active:scale-95 transition flex items-center justify-center cursor-pointer"
+                style={{ color: theme.text }}
+                title="Открыть боковое меню"
+              >
+                <LayoutGrid size={18} />
+              </button>
+            )}
 
-          {viewMode === 'editor' && (
-            <button
-              onClick={() => {
-                if (activeNote?.isPrivate || previousViewMode === 'private') {
-                  setViewMode('private');
-                } else {
-                  setViewMode('notes');
-                }
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-white/10 active:scale-95 text-xs font-bold transition cursor-pointer"
-              style={{ color: theme.text }}
-            >
-              <ArrowLeft size={14} />
-              <span>{activeNote?.isPrivate || previousViewMode === 'private' ? 'Приват' : t('notes')}</span>
-            </button>
-          )}
+            {viewMode === 'editor' && (
+              <button
+                onClick={() => {
+                  if (activeNote?.isPrivate || previousViewMode === 'private') {
+                    setViewMode('private');
+                  } else {
+                    setViewMode('notes');
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-white/10 active:scale-95 text-xs font-bold transition cursor-pointer"
+                style={{ color: theme.text }}
+              >
+                <ArrowLeft size={14} />
+                <span>{activeNote?.isPrivate || previousViewMode === 'private' ? 'Приват' : t('notes')}</span>
+              </button>
+            )}
+
+            {viewMode === 'trash' && (
+              <button
+                onClick={() => {
+                  if (trashPrivacyMode === 'private' || previousViewMode === 'private') {
+                    setViewMode('private');
+                  } else {
+                    setViewMode('notes');
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-white/10 active:scale-95 text-xs font-bold transition cursor-pointer"
+                style={{ color: theme.text }}
+              >
+                <ArrowLeft size={14} />
+                <span>{trashPrivacyMode === 'private' || previousViewMode === 'private' ? 'Приват' : t('notes')}</span>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Focus Mode Exit Floating Button (Top Right) */}
+      {viewMode === 'editor' && isFocusMode && (
+        <div className="fixed top-4 right-4 z-50 flex items-center pointer-events-auto animate-fadeIn">
+          <button
+            onClick={() => setIsFocusMode(false)}
+            className="p-2.5 rounded-2xl border shadow-lg backdrop-blur-xl hover:opacity-80 active:scale-95 transition flex items-center justify-center cursor-pointer"
+            style={{
+              backgroundColor: glassBg,
+              borderColor: glassBorder,
+              color: theme.text,
+            }}
+            title="Выйти из режима фокуса"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
 
       {/* Fixed Top-Right Floating Controls */}
-      {!sidebarOpen && (
+      {!sidebarOpen && !isFocusMode && (
         <div className="fixed top-4 right-4 z-40 flex items-center gap-2 pointer-events-auto">
           {/* Editor Actions in Note Editor */}
           {viewMode === 'editor' && activeNote && (
@@ -313,6 +362,20 @@ export const Header: React.FC = () => {
                   {editorMenuTab === 'main' ? (
                     /* Main Action Menu */
                     <div className="flex flex-col gap-0.5 text-xs font-bold">
+                      {/* Focus Mode item (Only shown if NOT pinned to bottom dock) */}
+                      {!quickSettings.pinFocusModeToBottomBar && (
+                        <button
+                          onClick={() => {
+                            setIsFocusMode(true);
+                            setIsEditorMenuOpen(false);
+                          }}
+                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                        >
+                          <Maximize2 size={15} style={{ color: theme.accent }} />
+                          <span>Фокус мод</span>
+                        </button>
+                      )}
+
                       {/* 1. Закрепить */}
                       <button
                         onClick={() => {
@@ -341,7 +404,18 @@ export const Header: React.FC = () => {
                         <span>Добавить тег</span>
                       </button>
 
-                      {/* 3. Экспортировать */}
+                      {/* 2.5. В блок */}
+                      <button
+                        onClick={() => {
+                          setEditorMenuTab('blocks');
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                      >
+                        <Layers size={15} style={{ color: theme.accent }} />
+                        <span>В блок</span>
+                      </button>
+
+                      {/* 3. Экспорт */}
                       <button
                         onClick={() => {
                           setIsEditorMenuOpen(false);
@@ -350,40 +424,26 @@ export const Header: React.FC = () => {
                         className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
                       >
                         <Download size={15} style={{ color: theme.accent }} />
-                        <span>Экспортировать</span>
+                        <span>Экспорт</span>
                       </button>
 
-                      {/* 4. Поделиться ссылкой */}
-                      <button
-                        onClick={() => {
-                          setIsEditorMenuOpen(false);
-                          handleShare();
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                      >
-                        <Share2 size={15} style={{ color: theme.accent }} />
-                        <span>Поделиться</span>
-                      </button>
-
-                      {/* 5. В приватное пространство */}
-                      <button
-                        onClick={() => {
-                          if (!privatePin) {
-                            setIsPinModalOpen(true);
-                          } else {
+                      {/* 4. В приватное пространство (Only if privatePin is set) */}
+                      {Boolean(privatePin) && (
+                        <button
+                          onClick={() => {
                             const newPrivate = !activeNote.isPrivate;
                             updateNote(activeNote.id, { isPrivate: newPrivate });
                             if (newPrivate) {
                               setViewMode('private');
                             }
-                          }
-                          setIsEditorMenuOpen(false);
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                      >
-                        <Shield size={15} style={{ color: theme.accent }} />
-                        <span>{activeNote.isPrivate ? 'Убрать из привата' : 'В приват'}</span>
-                      </button>
+                            setIsEditorMenuOpen(false);
+                          }}
+                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                        >
+                          <Shield size={15} style={{ color: theme.accent }} />
+                          <span>{activeNote.isPrivate ? 'Убрать из привата' : 'В приват'}</span>
+                        </button>
+                      )}
 
                       <div
                         className="h-px my-1"
@@ -402,7 +462,7 @@ export const Header: React.FC = () => {
                         <span>В корзину</span>
                       </button>
                     </div>
-                  ) : (
+                  ) : editorMenuTab === 'tags' ? (
                     /* Tag Selection Submenu */
                     <div className="flex flex-col gap-2 text-xs">
                       {/* Submenu Header */}
@@ -508,6 +568,111 @@ export const Header: React.FC = () => {
                             </button>
                           )}
                       </div>
+                    </div>
+                  ) : (
+                    /* Block Selection Submenu */
+                    <div className="flex flex-col gap-2 text-xs">
+                      {/* Submenu Header */}
+                      <div
+                        className="flex items-center justify-between pb-2 border-b"
+                        style={{ borderColor: hexToRgba(theme.text, 0.1) }}
+                      >
+                        <button
+                          onClick={() => setEditorMenuTab('main')}
+                          className="flex items-center gap-1.5 font-bold hover:opacity-80 transition cursor-pointer"
+                        >
+                          <ArrowLeft size={14} />
+                          <span>Назад</span>
+                        </button>
+                        <span className="font-extrabold text-xs">В блок</span>
+                        <button
+                          onClick={() => setIsEditorMenuOpen(false)}
+                          className="p-1 rounded-lg hover:bg-white/10 transition cursor-pointer opacity-60"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      {/* Block list */}
+                      <div className="space-y-1 max-h-56 overflow-y-auto pr-0.5">
+                        {blocks.map(b => {
+                          let isCurrentBlock = false;
+                          if (b.id === 'pinned' || b.type === 'pinned') {
+                            isCurrentBlock = activeNote.pinned;
+                          } else if (b.id === 'general' || b.type === 'general') {
+                            isCurrentBlock = !activeNote.pinned && (!activeNote.blockId || activeNote.blockId === 'general');
+                          } else {
+                            isCurrentBlock = !activeNote.pinned && activeNote.blockId === b.id;
+                          }
+
+                          return (
+                            <button
+                              key={b.id}
+                              onClick={() => {
+                                if (b.id === 'pinned' || b.type === 'pinned') {
+                                  updateNote(activeNote.id, { pinned: true, isPrivate: false });
+                                } else if (b.id === 'general' || b.type === 'general') {
+                                  updateNote(activeNote.id, { pinned: false, blockId: 'general', isPrivate: false });
+                                } else {
+                                  updateNote(activeNote.id, { pinned: false, blockId: b.id, isPrivate: false });
+                                }
+                                setIsEditorMenuOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl transition cursor-pointer text-left ${
+                                isCurrentBlock ? 'font-bold' : 'font-medium hover:bg-white/10'
+                              }`}
+                              style={{
+                                backgroundColor: isCurrentBlock ? hexToRgba(theme.accent, 0.18) : 'transparent',
+                                color: theme.text,
+                              }}
+                            >
+                              <div className="flex items-center gap-2 truncate pr-1">
+                                <Layers size={13} style={{ color: theme.accent }} className="shrink-0" />
+                                <span className="truncate">{b.name}</span>
+                              </div>
+                              {isCurrentBlock && <Check size={14} style={{ color: theme.accent }} className="shrink-0" />}
+                            </button>
+                          );
+                        })}
+
+                        {/* Option to move directly to Private Space - only if private space is enabled */}
+                        {Boolean(privatePin) && (
+                          <button
+                            onClick={() => {
+                              updateNote(activeNote.id, { isPrivate: true });
+                              setIsEditorMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl transition cursor-pointer text-left ${
+                              activeNote.isPrivate ? 'font-bold' : 'font-medium hover:bg-white/10'
+                            }`}
+                            style={{
+                              backgroundColor: activeNote.isPrivate ? hexToRgba(theme.accent, 0.18) : 'transparent',
+                              color: theme.text,
+                            }}
+                          >
+                            <div className="flex items-center gap-2 truncate pr-1">
+                              <Shield size={13} style={{ color: theme.accent }} className="shrink-0" />
+                              <span className="truncate">Приватное пространство</span>
+                            </div>
+                            {activeNote.isPrivate && <Check size={14} style={{ color: theme.accent }} className="shrink-0" />}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
+
+                      {/* Create new block button */}
+                      <button
+                        onClick={() => {
+                          setIsEditorMenuOpen(false);
+                          openCreateBlockModal([activeNote.id]);
+                        }}
+                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition text-left cursor-pointer font-bold"
+                        style={{ color: theme.accent }}
+                      >
+                        <Plus size={14} />
+                        <span>Создать блок</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -640,6 +805,38 @@ export const Header: React.FC = () => {
                         <Globe size={16} style={{ color: theme.accent }} />
                         <span>Веб-поиск</span>
                       </button>
+
+                      {/* 4. Воркспейсы */}
+                      {workspacesEnabled && (
+                        <>
+                          <div
+                            className="h-px my-1"
+                            style={{ backgroundColor: hexToRgba(theme.text, 0.1) }}
+                          />
+                          {workspaces.map(ws => {
+                            const isActive = ws.id === activeWorkspaceId;
+                            return (
+                              <button
+                                key={ws.id}
+                                onClick={() => {
+                                  if (!isActive) switchWorkspace(ws.id);
+                                  setIsQuickActionsMenuOpen(false);
+                                }}
+                                className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                                style={{
+                                  backgroundColor: isActive ? hexToRgba(theme.accent, 0.12) : 'transparent',
+                                  color: isActive ? theme.accent : theme.text,
+                                }}
+                              >
+                                <span className={`truncate ${isActive ? 'font-bold' : 'font-medium opacity-80'}`}>
+                                  {ws.name}
+                                </span>
+                                {isActive && <Check size={14} style={{ color: theme.accent }} />}
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -647,8 +844,8 @@ export const Header: React.FC = () => {
             </div>
           )}
 
-          {/* Calendar & Trash Floating Back Button */}
-          {(viewMode === 'calendar' || viewMode === 'trash') && (
+          {/* Calendar Floating Back Button */}
+          {viewMode === 'calendar' && (
             <button
               onClick={() => {
                 const target = previousViewMode && previousViewMode !== viewMode ? previousViewMode : 'notes';

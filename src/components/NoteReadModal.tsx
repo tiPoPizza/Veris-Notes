@@ -54,7 +54,7 @@ export const NoteReadModal: React.FC<NoteReadModalProps> = ({ noteId, onClose })
             <h3
               className="font-bold text-sm sm:text-base truncate"
               style={{
-                fontFamily: getFontFamilyStyle(note.titleFont || quickSettings.titleFont),
+                fontFamily: getFontFamilyStyle(quickSettings.fontFamily),
               }}
             >
               {note.title || 'Без названия'}
@@ -94,7 +94,7 @@ export const NoteReadModal: React.FC<NoteReadModalProps> = ({ noteId, onClose })
           <div
             className="prose max-w-none text-sm sm:text-base leading-relaxed break-words"
             style={{
-              fontFamily: getFontFamilyStyle(quickSettings.noteFont),
+              fontFamily: getFontFamilyStyle(quickSettings.fontFamily),
               lineHeight: quickSettings.lineHeight || 1.6,
             }}
             dangerouslySetInnerHTML={{

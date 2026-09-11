@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { Search, X } from 'lucide-react';
+import { Search, X, FileSearch } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 
 interface PinnedSearchBarProps {
@@ -13,10 +13,17 @@ export const PinnedSearchBar: React.FC<PinnedSearchBarProps> = ({ isTasksMode = 
     setSearchQuery,
     searchTarget,
     setSearchTarget,
+    semanticSearchSettings,
+    isSemanticSearchActive,
+    setIsSemanticSearchActive,
     theme,
   } = useApp();
 
   const isLight = isLightColor(theme.bg);
+
+  const isSemanticActive =
+    semanticSearchSettings.enabled &&
+    (semanticSearchSettings.triggerMode === 'auto' || isSemanticSearchActive);
 
   return (
     <div
@@ -55,72 +62,106 @@ export const PinnedSearchBar: React.FC<PinnedSearchBarProps> = ({ isTasksMode = 
       </div>
 
       {/* Target Filter Segmented Buttons - Slim & Compact */}
-      <div
-        className="grid grid-cols-3 gap-1 p-0.5 rounded-xl border"
-        style={{
-          backgroundColor: hexToRgba(theme.text, 0.03),
-          borderColor: hexToRgba(theme.text, 0.08),
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setSearchTarget('all')}
-          className={`py-1 px-1 rounded-lg text-[11px] font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
-            searchTarget === 'all'
-              ? 'border-solid shadow-xs'
-              : 'border-transparent opacity-65 hover:opacity-100'
-          }`}
+      <div className="flex items-center gap-1">
+        <div
+          className="grid grid-cols-3 gap-1 p-0.5 rounded-xl border flex-1"
           style={{
-            borderColor: searchTarget === 'all' ? theme.accent : 'transparent',
-            backgroundColor:
+            backgroundColor: hexToRgba(theme.text, 0.03),
+            borderColor: hexToRgba(theme.text, 0.08),
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setSearchTarget('all')}
+            className={`py-1 px-1 rounded-lg text-[11px] font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
               searchTarget === 'all'
-                ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
-                : 'transparent',
-            color: searchTarget === 'all' ? theme.accent : theme.text,
-          }}
-        >
-          Все
-        </button>
+                ? 'border-solid shadow-xs'
+                : 'border-transparent opacity-65 hover:opacity-100'
+            }`}
+            style={{
+              borderColor: searchTarget === 'all' ? theme.accent : 'transparent',
+              backgroundColor:
+                searchTarget === 'all'
+                  ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
+                  : 'transparent',
+              color: searchTarget === 'all' ? theme.accent : theme.text,
+            }}
+          >
+            Все
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setSearchTarget('title')}
-          className={`py-1 px-1 rounded-lg text-[11px] font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
-            searchTarget === 'title'
-              ? 'border-solid shadow-xs'
-              : 'border-transparent opacity-65 hover:opacity-100'
-          }`}
-          style={{
-            borderColor: searchTarget === 'title' ? theme.accent : 'transparent',
-            backgroundColor:
+          <button
+            type="button"
+            onClick={() => setSearchTarget('title')}
+            className={`py-1 px-1 rounded-lg text-[11px] font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
               searchTarget === 'title'
-                ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
-                : 'transparent',
-            color: searchTarget === 'title' ? theme.accent : theme.text,
-          }}
-        >
-          Название
-        </button>
+                ? 'border-solid shadow-xs'
+                : 'border-transparent opacity-65 hover:opacity-100'
+            }`}
+            style={{
+              borderColor: searchTarget === 'title' ? theme.accent : 'transparent',
+              backgroundColor:
+                searchTarget === 'title'
+                  ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
+                  : 'transparent',
+              color: searchTarget === 'title' ? theme.accent : theme.text,
+            }}
+          >
+            Название
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setSearchTarget('content')}
-          className={`py-1 px-1 rounded-lg text-[11px] font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
-            searchTarget === 'content'
-              ? 'border-solid shadow-xs'
-              : 'border-transparent opacity-65 hover:opacity-100'
-          }`}
-          style={{
-            borderColor: searchTarget === 'content' ? theme.accent : 'transparent',
-            backgroundColor:
+          <button
+            type="button"
+            onClick={() => setSearchTarget('content')}
+            className={`py-1 px-1 rounded-lg text-[11px] font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
               searchTarget === 'content'
-                ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
-                : 'transparent',
-            color: searchTarget === 'content' ? theme.accent : theme.text,
-          }}
-        >
-          {isTasksMode ? 'Задачи' : 'Текст'}
-        </button>
+                ? 'border-solid shadow-xs'
+                : 'border-transparent opacity-65 hover:opacity-100'
+            }`}
+            style={{
+              borderColor: searchTarget === 'content' ? theme.accent : 'transparent',
+              backgroundColor:
+                searchTarget === 'content'
+                  ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
+                  : 'transparent',
+              color: searchTarget === 'content' ? theme.accent : theme.text,
+            }}
+          >
+            {isTasksMode ? 'Задачи' : 'Текст'}
+          </button>
+        </div>
+
+        {/* Semantic Search Sparkle Trigger */}
+        {!isTasksMode && semanticSearchSettings.enabled && (
+          <button
+            type="button"
+            onClick={() => {
+              if (semanticSearchSettings.triggerMode === 'manual') {
+                setIsSemanticSearchActive(!isSemanticSearchActive);
+              }
+            }}
+            className={`p-1.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1 ${
+              isSemanticActive ? 'shadow-xs cursor-pointer' : 'opacity-65 hover:opacity-100 cursor-pointer'
+            }`}
+            style={{
+              backgroundColor: isSemanticActive
+                ? hexToRgba(theme.accent, 0.2)
+                : hexToRgba(theme.text, 0.03),
+              borderColor: isSemanticActive ? theme.accent : hexToRgba(theme.text, 0.08),
+              color: isSemanticActive ? theme.accent : theme.text,
+            }}
+            title={
+              semanticSearchSettings.triggerMode === 'manual'
+                ? isSemanticSearchActive
+                  ? 'Семантический поиск активен (нажмите для выключения)'
+                  : 'Включить поиск по смыслу'
+                : 'Семантический поиск работает автоматически'
+            }
+          >
+            <FileSearch size={13} style={{ color: isSemanticActive ? theme.accent : undefined }} />
+            <span className="text-[10px] font-mono hidden sm:inline">Смысл</span>
+          </button>
+        )}
       </div>
     </div>
   );

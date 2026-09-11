@@ -283,7 +283,11 @@ export const DeleteBlockModal: React.FC = () => {
           {blockNotes.length === 0 ? (
             <button
               onClick={() => confirmDeleteBlock(blockToDelete.id, 'transfer', 'general')}
-              className="px-5 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer bg-red-500 text-white hover:bg-red-600 active:scale-95"
+              className="px-5 py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer active:scale-95 shadow-md"
+              style={{
+                backgroundColor: theme.accent,
+                color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
+              }}
             >
               Удалить блок
             </button>

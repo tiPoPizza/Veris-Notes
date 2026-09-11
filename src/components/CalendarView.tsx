@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { CalendarModal } from './CalendarModal';
 import { CalendarEvent } from '../types';
@@ -6,11 +6,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Clock,
   Bell,
   Trash2,
   Edit2,
   Calendar as CalendarIcon,
+  X,
 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 
@@ -94,8 +94,38 @@ export const CalendarView: React.FC = () => {
     return isNaN(initial.getTime()) ? today.getMonth() : initial.getMonth();
   });
 
+  // Sync calendar month & year if selected date changes externally (e.g. from sidebar day tile)
+  useEffect(() => {
+    if (selectedCalendarDate) {
+      const parts = selectedCalendarDate.split('-');
+      if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        if (!isNaN(y) && !isNaN(m)) {
+          setCurrentYear(y);
+          setCurrentMonth(m);
+        }
+      }
+    }
+  }, [selectedCalendarDate]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
+  const [eventToDelete, setEventToDelete] = useState<CalendarEvent | null>(null);
+
+  const formatEventDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const targetDate = new Date(y, m, d);
+    const weekday = FULL_WEEKDAYS_RU[targetDate.getDay()];
+    const monthGen = MONTH_GENITIVE_RU[m];
+    return `${d} ${monthGen} ${y}, ${weekday}`;
+  };
 
   // Month navigation
   const prevMonth = () => {
@@ -244,18 +274,24 @@ export const CalendarView: React.FC = () => {
       <div className="max-w-2xl mx-auto w-full space-y-8">
         {/* Calendar Card */}
         <div
-          className="p-5 sm:p-7 rounded-3xl border backdrop-blur-xl shadow-xl space-y-6"
-          style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+          className="p-5 sm:p-7 rounded-3xl backdrop-blur-xl space-y-6"
+          style={{
+            backgroundColor: cardBg,
+            border: quickSettings.showBorder ? `1px solid ${theme.accent}` : 'none',
+            boxShadow: isLight
+              ? '0 1px 2px rgba(0, 0, 0, 0.03), 0 16px 36px -8px rgba(0, 0, 0, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.03)'
+              : '0 20px 45px -10px rgba(0, 0, 0, 0.6), 0 8px 18px -4px rgba(0, 0, 0, 0.35)',
+          }}
         >
           {/* Month & Year Header with Controls */}
           <div className="flex items-center justify-between">
             <button
               onClick={prevMonth}
-              className="p-2 rounded-2xl border hover:bg-white/10 active:scale-95 transition cursor-pointer"
-              style={{ borderColor: cardBorder, color: theme.text }}
+              className="p-2 rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 active:scale-90 transition cursor-pointer"
+              style={{ color: theme.text }}
               title="Предыдущий месяц"
             >
-              <ChevronLeft size={18} />
+              <ChevronLeft size={22} />
             </button>
 
             <div className="text-center">
@@ -266,11 +302,11 @@ export const CalendarView: React.FC = () => {
 
             <button
               onClick={nextMonth}
-              className="p-2 rounded-2xl border hover:bg-white/10 active:scale-95 transition cursor-pointer"
-              style={{ borderColor: cardBorder, color: theme.text }}
+              className="p-2 rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 active:scale-90 transition cursor-pointer"
+              style={{ color: theme.text }}
               title="Следующий месяц"
             >
-              <ChevronRight size={18} />
+              <ChevronRight size={22} />
             </button>
           </div>
 
@@ -301,25 +337,24 @@ export const CalendarView: React.FC = () => {
               return (
                 <button
                   key={`${item.dateStr}-${idx}`}
+                  type="button"
                   onClick={() => setSelectedCalendarDate(item.dateStr)}
-                  className={`relative flex flex-col items-center justify-center h-10 sm:h-12 rounded-2xl transition cursor-pointer active:scale-95 ${
+                  className={`relative flex flex-col items-center justify-center h-10 sm:h-12 w-full transition cursor-pointer active:scale-95 ${
                     !isCurrent ? 'opacity-30' : 'opacity-100'
                   }`}
                   style={{
-                    backgroundColor: isSelected
-                      ? hexToRgba(theme.accent, 0.22)
-                      : 'transparent',
                     color: theme.text,
                   }}
                 >
-                  {/* Date Number with Hollow Circle for Today */}
+                  {/* Date Number with Circle for Selected and/or Hollow Circle for Today */}
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition relative ${
-                      isToday
-                        ? 'border-2' // Hollow circle around today's date
-                        : ''
+                    className={`w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full flex items-center justify-center text-xs font-black transition relative ${
+                      isToday ? 'border-2' : ''
                     }`}
                     style={{
+                      backgroundColor: isSelected
+                        ? hexToRgba(theme.accent, 0.28)
+                        : 'transparent',
                       borderColor: isToday ? theme.accent : 'transparent',
                       color: isSelected
                         ? theme.accent
@@ -328,16 +363,15 @@ export const CalendarView: React.FC = () => {
                         : theme.text,
                     }}
                   >
-                    <span>{item.dayNumber}</span>
+                    <span className={hasEvents ? '-translate-y-0.5' : ''}>{item.dayNumber}</span>
+                    {/* Dot indicator if day has events - cleanly inside circle */}
+                    {hasEvents && (
+                      <div
+                        className="absolute bottom-1 w-1.5 h-1.5 rounded-full"
+                        style={{ backgroundColor: theme.accent }}
+                      />
+                    )}
                   </div>
-
-                  {/* Dot indicator if day has events */}
-                  {hasEvents && (
-                    <div
-                      className="absolute bottom-1 w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: theme.accent }}
-                    />
-                  )}
                 </button>
               );
             })}
@@ -352,11 +386,11 @@ export const CalendarView: React.FC = () => {
               <h3 className="text-base sm:text-lg font-extrabold" style={{ color: theme.text }}>
                 {selectedDateTitle}
               </h3>
-              <p className="text-xs opacity-50">
-                {selectedDateEvents.length > 0
-                  ? `Событий: ${selectedDateEvents.length}`
-                  : 'Нет запланированных событий'}
-              </p>
+              {selectedDateEvents.length > 0 && (
+                <p className="text-xs opacity-50">
+                  Событий: {selectedDateEvents.length}
+                </p>
+              )}
             </div>
 
             {/* + Событие Button (only for today and future days) */}
@@ -375,23 +409,16 @@ export const CalendarView: React.FC = () => {
           {/* Events List */}
           {selectedDateEvents.length === 0 ? (
             <div
-              className="p-8 rounded-3xl border backdrop-blur-md flex flex-col items-center justify-center text-center space-y-3"
-              style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+              className="p-8 rounded-3xl backdrop-blur-md flex flex-col items-center justify-center text-center space-y-3"
+              style={{
+                backgroundColor: cardBg,
+                border: quickSettings.showBorder ? `1px solid ${theme.accent}` : 'none',
+              }}
             >
-              <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center opacity-40"
-                style={{ backgroundColor: hexToRgba(theme.text, 0.08), color: theme.text }}
-              >
-                <CalendarIcon size={24} />
-              </div>
+              <CalendarIcon size={32} className="opacity-40" style={{ color: theme.text }} />
               <div>
                 <p className="text-sm font-bold opacity-70">
                   {isPastDay ? 'Прошедший день' : 'На этот день событий нет'}
-                </p>
-                <p className="text-xs opacity-40 mt-0.5">
-                  {isPastDay
-                    ? 'Событий не было (создание недоступно)'
-                    : 'Нажмите "+ Событие", чтобы запланировать задачу или напоминание'}
                 </p>
               </div>
             </div>
@@ -400,78 +427,245 @@ export const CalendarView: React.FC = () => {
               {selectedDateEvents.map(event => (
                 <div
                   key={event.id}
-                  className="p-4 rounded-2xl border backdrop-blur-md flex items-center justify-between gap-3 shadow-xs transition hover:shadow-md group"
+                  onClick={() => setViewingEvent(event)}
+                  className="p-3.5 sm:p-4 rounded-2xl border backdrop-blur-md flex items-center justify-between gap-3 shadow-xs transition hover:shadow-md cursor-pointer active:scale-[0.99] group"
                   style={{ backgroundColor: cardBg, borderColor: cardBorder }}
                 >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                      style={{
-                        backgroundColor: hexToRgba(theme.accent, 0.15),
-                        color: theme.accent,
-                      }}
-                    >
-                      {event.remindOnDay ? <Bell size={18} /> : <Clock size={18} />}
-                    </div>
+                  {/* Left: Pencil button */}
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleEditEvent(event);
+                    }}
+                    className="p-2 -ml-1 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition cursor-pointer shrink-0"
+                    style={{ color: theme.accent }}
+                    title="Редактировать событие"
+                  >
+                    <Edit2 size={16} />
+                  </button>
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-extrabold truncate" style={{ color: theme.text }}>
-                          {event.title}
-                        </h4>
-                        {event.remindOnDay && (
-                          <span
-                            className="text-xs font-bold"
-                            style={{
-                              color: theme.accent,
-                            }}
-                          >
-                            Напоминание
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs opacity-60 mt-0.5 font-medium">
-                        <Clock size={12} />
-                        <span>
-                          {event.isAllDay
-                            ? 'Весь день'
-                            : `${event.startTime || '--:--'} – ${event.endTime || '--:--'}`}
+                  {/* Middle: Event details */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-extrabold truncate" style={{ color: theme.text }}>
+                        {event.title}
+                      </h4>
+                      {event.remindOnDay && (
+                        <span
+                          className="text-xs font-bold shrink-0"
+                          style={{
+                            color: theme.accent,
+                          }}
+                        >
+                          Напоминание
                         </span>
-                      </div>
-
-                      {event.description && (
-                        <p className="text-xs opacity-60 line-clamp-1 mt-1">
-                          {event.description}
-                        </p>
                       )}
                     </div>
+
+                    <div className="text-xs font-semibold mt-1" style={{ color: theme.accent }}>
+                      <span>
+                        {event.isAllDay
+                          ? 'Весь день'
+                          : `${event.startTime || '--:--'} – ${event.endTime || '--:--'}`}
+                      </span>
+                    </div>
+
+                    {event.description && (
+                      <p className="text-xs opacity-60 line-clamp-1 mt-1 leading-relaxed" style={{ color: theme.text }}>
+                        {event.description}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100">
-                    <button
-                      onClick={() => handleEditEvent(event)}
-                      className="p-2 rounded-xl hover:bg-white/10 active:scale-95 transition cursor-pointer"
-                      style={{ color: theme.text }}
-                      title="Редактировать"
-                    >
-                      <Edit2 size={15} />
-                    </button>
-                    <button
-                      onClick={() => deleteCalendarEvent(event.id)}
-                      className="p-2 rounded-xl hover:bg-red-500/20 active:scale-95 transition cursor-pointer text-red-500"
-                      title="Удалить в корзину"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
+                  {/* Right: Delete button */}
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setEventToDelete(event);
+                    }}
+                    className="p-2 -mr-1 rounded-xl hover:bg-red-500/15 active:scale-95 transition cursor-pointer text-red-500 shrink-0"
+                    title="Удалить событие"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Event Details View Modal (Read-only) */}
+      {viewingEvent && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md animate-fadeIn"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
+          onClick={() => setViewingEvent(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl p-6 shadow-2xl border backdrop-blur-2xl transition-all space-y-5"
+            style={{
+              backgroundColor: isLight ? '#ffffff' : hexToRgba(theme.bg, 0.96),
+              borderColor: cardBorder,
+              color: theme.text,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-1">
+              <span className="text-xs font-bold uppercase tracking-wider opacity-50">
+                Просмотр события
+              </span>
+              <button
+                type="button"
+                onClick={() => setViewingEvent(null)}
+                className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition cursor-pointer"
+                style={{ color: theme.text }}
+                title="Закрыть"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Event Title */}
+            <div>
+              <h3 className="text-xl font-extrabold tracking-tight break-words">
+                {viewingEvent.title}
+              </h3>
+            </div>
+
+            {/* Date & Time Info Box */}
+            <div
+              className="p-4 rounded-2xl border space-y-2.5"
+              style={{
+                backgroundColor: cardBg,
+                borderColor: cardBorder,
+              }}
+            >
+              {/* Date */}
+              <div className="flex items-center gap-2.5 text-xs font-semibold">
+                <CalendarIcon size={16} style={{ color: theme.accent }} className="shrink-0" />
+                <span>{formatEventDate(viewingEvent.date)}</span>
+              </div>
+
+              {/* Time */}
+              <div className="flex items-center gap-2.5 text-xs font-semibold">
+                <div
+                  className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: hexToRgba(theme.accent, 0.18) }}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: theme.accent }} />
+                </div>
+                <span>
+                  {viewingEvent.isAllDay
+                    ? 'Весь день'
+                    : `${viewingEvent.startTime || '--:--'} – ${viewingEvent.endTime || '--:--'}`}
+                </span>
+              </div>
+
+              {/* Reminder if enabled */}
+              {viewingEvent.remindOnDay && (
+                <div className="flex items-center gap-2.5 text-xs font-semibold" style={{ color: theme.accent }}>
+                  <Bell size={16} className="shrink-0" />
+                  <span>Напоминание включено</span>
+                </div>
+              )}
+            </div>
+
+            {/* Description if present */}
+            {viewingEvent.description && (
+              <div className="space-y-1.5">
+                <div className="text-xs font-bold opacity-60">Описание</div>
+                <div
+                  className="p-3.5 rounded-2xl border text-xs leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap"
+                  style={{
+                    backgroundColor: cardBg,
+                    borderColor: cardBorder,
+                  }}
+                >
+                  {viewingEvent.description}
+                </div>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setViewingEvent(null)}
+                className="w-full py-2.5 px-4 rounded-xl font-bold text-xs active:scale-98 transition cursor-pointer text-center"
+                style={{
+                  backgroundColor: hexToRgba(theme.text, 0.08),
+                  color: theme.text,
+                }}
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (matching Photo 2) */}
+      {eventToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md animate-fadeIn"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
+          onClick={() => setEventToDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl p-6 shadow-2xl border backdrop-blur-2xl transition-all space-y-4"
+            style={{
+              backgroundColor: isLight ? '#ffffff' : hexToRgba(theme.bg, 0.96),
+              borderColor: cardBorder,
+              color: theme.text,
+              boxShadow: `0 25px 50px ${isLight ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.5)'}`,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3.5">
+              <Trash2 size={24} style={{ color: theme.accent }} className="shrink-0" />
+              <div>
+                <h3 className="font-extrabold text-base">Переместить в корзину?</h3>
+                <p className="text-xs opacity-60 mt-0.5">
+                  Событие можно будет восстановить из корзины.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setEventToDelete(null)}
+                className="flex-1 py-3 px-4 rounded-2xl border font-bold text-xs hover:opacity-80 active:scale-98 transition cursor-pointer"
+                style={{
+                  borderColor: cardBorder,
+                  backgroundColor: hexToRgba(theme.text, 0.05),
+                  color: theme.text,
+                }}
+              >
+                Нет
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteCalendarEvent(eventToDelete.id);
+                  setEventToDelete(null);
+                }}
+                className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                style={{
+                  backgroundColor: theme.accent,
+                  color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
+                }}
+              >
+                Да
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Event Creation & Editing Modal */}
       <CalendarModal

@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { getTranslation } from '../i18n';
-import { Note, NoteBlock } from '../types';
-import { Pin, Search, Plus, Tag as TagIcon, X, Trash2, MoreHorizontal, Copy, CopyPlus, Check, Download, Layers, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Edit2, Shield } from 'lucide-react';
+import { Note, NoteBlock, ALL_NOTE_TILE_ACTIONS } from '../types';
+import { Pin, Search, Plus, Tag as TagIcon, X, Trash2, MoreHorizontal, Copy, CopyPlus, Check, Download, Layers, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Edit2, Shield, Sparkles, FileSearch, Loader2 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { stripHtmlTags } from '../utils/textUtils';
 import { getFontFamilyStyle } from '../utils/fonts';
 import { PinnedSearchBar } from './PinnedSearchBar';
 import { PinModal } from './PinModal';
+import { semanticSearchService, NoteSemanticMatch } from '../services/semanticSearch';
+
+// Persist main screen scroll position across note opening/closing
+let savedMainScrollTop = 0;
+let savedHorizontalScrollLeft = 0;
+const savedColumnScrollTops: Record<string, number> = {};
 
 export const NotesListView: React.FC = () => {
   const {
@@ -29,6 +35,10 @@ export const NotesListView: React.FC = () => {
     searchQuery,
     setSearchQuery,
     searchTarget,
+    semanticSearchSettings,
+    isSemanticSearchActive,
+    setIsSemanticSearchActive,
+    isTagSearchOpen,
     setIsTagSearchOpen,
     sidebarOpen,
     privatePin,
@@ -43,6 +53,9 @@ export const NotesListView: React.FC = () => {
     moveNotesToBlock,
   } = useApp();
 
+  const mainContainerRef = useRef<HTMLDivElement>(null);
+  const horizontalContainerRef = useRef<HTMLDivElement>(null);
+
   const [openMenuNoteId, setOpenMenuNoteId] = useState<string | null>(null);
   const [tagSubmenuNoteId, setTagSubmenuNoteId] = useState<string | null>(null);
   const [blockSubmenuNoteId, setBlockSubmenuNoteId] = useState<string | null>(null);
@@ -54,6 +67,101 @@ export const NotesListView: React.FC = () => {
   const [copiedNotice, setCopiedNotice] = useState<string | null>(null);
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [targetPrivateNoteId, setTargetPrivateNoteId] = useState<string | null>(null);
+
+  // Semantic search results state
+  const [semanticMatches, setSemanticMatches] = useState<NoteSemanticMatch[]>([]);
+  const [isSemanticSearching, setIsSemanticSearching] = useState<boolean>(false);
+
+  const isSemanticEffectiveActive =
+    semanticSearchSettings.enabled &&
+    (semanticSearchSettings.triggerMode === 'auto' || isSemanticSearchActive);
+
+  useEffect(() => {
+    if (!searchQuery.trim() || !isSemanticEffectiveActive) {
+      setSemanticMatches([]);
+      setIsSemanticSearching(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsSemanticSearching(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const nonPrivateNotes = notes.filter(n => !n.isPrivate);
+        const results = await semanticSearchService.searchNotes(
+          searchQuery,
+          nonPrivateNotes,
+          semanticSearchSettings.modelRepo,
+          0.16,
+          semanticSearchSettings.indexingMode || 'auto'
+        );
+        if (!isCancelled) {
+          setSemanticMatches(results);
+        }
+      } catch (e) {
+        console.error('Semantic search error:', e);
+      } finally {
+        if (!isCancelled) {
+          setIsSemanticSearching(false);
+        }
+      }
+    }, 180);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, isSemanticEffectiveActive, notes, semanticSearchSettings.modelRepo, semanticSearchSettings.indexingMode]);
+
+  const semanticScoresMap = React.useMemo(() => {
+    const map = new Map<string, number>();
+    semanticMatches.forEach(m => map.set(m.note.id, m.score));
+    return map;
+  }, [semanticMatches]);
+
+  const isHorizontal = !!quickSettings.horizontalMainMenu;
+
+  const handleOpenNote = (noteId: string) => {
+    if (mainContainerRef.current) {
+      savedMainScrollTop = mainContainerRef.current.scrollTop;
+    }
+    if (horizontalContainerRef.current) {
+      savedHorizontalScrollLeft = horizontalContainerRef.current.scrollLeft;
+    }
+    setActiveNoteId(noteId);
+    setViewMode('editor');
+  };
+
+  useEffect(() => {
+    const restoreScroll = () => {
+      if (!isHorizontal && mainContainerRef.current && savedMainScrollTop > 0) {
+        mainContainerRef.current.scrollTop = savedMainScrollTop;
+      }
+      if (isHorizontal && horizontalContainerRef.current && savedHorizontalScrollLeft > 0) {
+        horizontalContainerRef.current.scrollLeft = savedHorizontalScrollLeft;
+      }
+      if (isHorizontal) {
+        Object.entries(savedColumnScrollTops).forEach(([blockId, top]) => {
+          const colEl = document.getElementById(`notes-block-col-${blockId}`);
+          if (colEl && top > 0) {
+            colEl.scrollTop = top;
+          }
+        });
+      }
+    };
+
+    restoreScroll();
+    const r1 = requestAnimationFrame(restoreScroll);
+    const t1 = setTimeout(restoreScroll, 50);
+    const t2 = setTimeout(restoreScroll, 150);
+
+    return () => {
+      cancelAnimationFrame(r1);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isHorizontal]);
 
   const longPressTimerRef = React.useRef<{ [key: string]: ReturnType<typeof setTimeout> }>({});
   const isLongPressRef = React.useRef<boolean>(false);
@@ -114,27 +222,61 @@ export const NotesListView: React.FC = () => {
     const titleMatch = (n.title || '').toLowerCase().includes(q);
     const contentPlain = stripHtmlTags(n.content || '').toLowerCase();
     const contentMatch = contentPlain.includes(q);
+    const hasSemanticMatch = isSemanticEffectiveActive && semanticScoresMap.has(n.id);
 
     if (searchTarget === 'title') {
-      return titleMatch;
+      return titleMatch || hasSemanticMatch;
     }
     if (searchTarget === 'content') {
-      return contentMatch;
+      return contentMatch || hasSemanticMatch;
     }
     // searchTarget === 'all'
-    return titleMatch || contentMatch;
+    return titleMatch || contentMatch || hasSemanticMatch;
   });
 
-  // Helper to get notes for a block
+  // Helper to get notes for a block with search relevance ranking
   const getNotesForBlock = (block: NoteBlock, notesList: Note[]) => {
     const list = notesList.filter(n => !n.isPrivate);
+    let blockNotes: Note[] = [];
     if (block.id === 'pinned' || block.type === 'pinned') {
-      return list.filter(n => n.pinned);
+      blockNotes = list.filter(n => n.pinned);
+    } else if (block.id === 'general' || block.type === 'general') {
+      blockNotes = list.filter(n => !n.pinned && (!n.blockId || n.blockId === 'general'));
+    } else {
+      blockNotes = list.filter(n => !n.pinned && n.blockId === block.id);
     }
-    if (block.id === 'general' || block.type === 'general') {
-      return list.filter(n => !n.pinned && (!n.blockId || n.blockId === 'general'));
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      return [...blockNotes].sort((a, b) => {
+        const titleA = (a.title || '').toLowerCase();
+        const titleB = (b.title || '').toLowerCase();
+        const contentA = stripHtmlTags(a.content || '').toLowerCase();
+        const contentB = stripHtmlTags(b.content || '').toLowerCase();
+
+        let rankA = 0;
+        let rankB = 0;
+
+        if (titleA.includes(q)) rankA += 3.0;
+        else if (contentA.includes(q)) rankA += 1.5;
+        if (semanticScoresMap.has(a.id)) {
+          rankA += (semanticScoresMap.get(a.id) || 0) * 2.5;
+        }
+
+        if (titleB.includes(q)) rankB += 3.0;
+        else if (contentB.includes(q)) rankB += 1.5;
+        if (semanticScoresMap.has(b.id)) {
+          rankB += (semanticScoresMap.get(b.id) || 0) * 2.5;
+        }
+
+        if (Math.abs(rankB - rankA) > 0.001) {
+          return rankB - rankA;
+        }
+        return b.updatedAt - a.updatedAt;
+      });
     }
-    return list.filter(n => !n.pinned && n.blockId === block.id);
+
+    return blockNotes;
   };
 
   const cardBg = isLight ? '#FFFFFF' : hexToRgba(theme.text, 0.05);
@@ -257,38 +399,29 @@ export const NotesListView: React.FC = () => {
                         backgroundColor: isCurrentBlock ? hexToRgba(theme.accent, 0.18) : 'transparent',
                       }}
                     >
-                      <div className="flex items-center gap-2 truncate pr-1">
-                        <Layers size={13} style={{ color: theme.accent }} className="shrink-0" />
-                        <span className="truncate">{b.name}</span>
-                      </div>
-                      {isCurrentBlock && <Check size={14} style={{ color: theme.accent }} className="shrink-0" />}
+                      <span className="truncate pr-1">{b.name}</span>
+                      {isCurrentBlock && <Check size={14} style={{ color: theme.accent }} className="shrink-0 ml-auto" />}
                     </button>
                   );
                 })}
 
-                {/* Option to move directly to Private Space */}
-                <button
-                  onClick={e => {
-                    e.stopPropagation();
-                    if (!privatePin) {
-                      setTargetPrivateNoteId(activeNote.id);
-                      setIsPinModalOpen(true);
-                    } else {
+                {/* Option to move directly to Private Space - only if private space is enabled */}
+                {Boolean(privatePin) && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
                       updateNote(activeNote.id, { isPrivate: true });
-                    }
-                    setBlockSubmenuNoteId(null);
-                  }}
-                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs hover:bg-white/10 active:scale-98 transition text-left cursor-pointer"
-                  style={{
-                    backgroundColor: activeNote.isPrivate ? hexToRgba(theme.accent, 0.18) : 'transparent',
-                  }}
-                >
-                  <div className="flex items-center gap-2 truncate pr-1">
-                    <Shield size={13} style={{ color: theme.accent }} className="shrink-0" />
-                    <span className="truncate">Приватное пространство</span>
-                  </div>
-                  {activeNote.isPrivate && <Check size={14} style={{ color: theme.accent }} className="shrink-0" />}
-                </button>
+                      setBlockSubmenuNoteId(null);
+                    }}
+                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs hover:bg-white/10 active:scale-98 transition text-left cursor-pointer"
+                    style={{
+                      backgroundColor: activeNote.isPrivate ? hexToRgba(theme.accent, 0.18) : 'transparent',
+                    }}
+                  >
+                    <span className="truncate pr-1">Приватное пространство</span>
+                    {activeNote.isPrivate && <Check size={14} style={{ color: theme.accent }} className="shrink-0 ml-auto" />}
+                  </button>
+                )}
               </div>
 
               <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
@@ -309,140 +442,153 @@ export const NotesListView: React.FC = () => {
             </div>
           ) : !isTagSubmenuOpen ? (
             /* Main Actions List */
-            <div className="flex flex-col gap-0.5 text-xs font-bold">
-              {/* Up / Down Reorder in 1 row (2 buttons) at the top */}
-              <div className="grid grid-cols-2 gap-1 pb-1 mb-1 border-b" style={{ borderColor: hexToRgba(theme.text, 0.1) }}>
-                <button
-                  disabled={!canMoveUp}
-                  onClick={e => {
-                    e.stopPropagation();
-                    moveNoteInBlock(activeNote.id, 'up');
-                  }}
-                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl transition cursor-pointer text-xs ${
-                    !canMoveUp
-                      ? 'opacity-30 cursor-not-allowed bg-white/5'
-                      : 'hover:bg-white/10 active:scale-95 bg-white/5'
-                  }`}
-                  title="Переместить вверх"
-                >
-                  <ArrowUp size={14} style={{ color: theme.accent }} />
-                  <span>Вверх</span>
-                </button>
+            (() => {
+              const currentActions = quickSettings.noteTileActions || ALL_NOTE_TILE_ACTIONS;
+              const hasReorder = currentActions.includes('reorder');
+              const hasPin = currentActions.includes('pin');
+              const hasDuplicate = currentActions.includes('duplicate');
+              const hasBlock = currentActions.includes('block');
+              const hasTag = currentActions.includes('tag');
+              const hasExport = currentActions.includes('export');
+              const hasDelete = currentActions.includes('delete');
+              const hasAnyBeforeDelete = hasReorder || hasPin || hasDuplicate || hasBlock || hasTag || hasExport;
 
-                <button
-                  disabled={!canMoveDown}
-                  onClick={e => {
-                    e.stopPropagation();
-                    moveNoteInBlock(activeNote.id, 'down');
-                  }}
-                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl transition cursor-pointer text-xs ${
-                    !canMoveDown
-                      ? 'opacity-30 cursor-not-allowed bg-white/5'
-                      : 'hover:bg-white/10 active:scale-95 bg-white/5'
-                  }`}
-                  title="Переместить вниз"
-                >
-                  <ArrowDown size={14} style={{ color: theme.accent }} />
-                  <span>Вниз</span>
-                </button>
-              </div>
+              return (
+                <div className="flex flex-col gap-0.5 text-xs font-bold">
+                  {/* Up / Down Reorder in 1 row (2 buttons) at the top */}
+                  {hasReorder && (
+                    <div className="grid grid-cols-2 gap-1 mb-1">
+                      <button
+                        disabled={!canMoveUp}
+                        onClick={e => {
+                          e.stopPropagation();
+                          moveNoteInBlock(activeNote.id, 'up');
+                        }}
+                        className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl transition cursor-pointer text-xs ${
+                          !canMoveUp
+                            ? 'opacity-30 cursor-not-allowed bg-white/5'
+                            : 'hover:bg-white/10 active:scale-95 bg-white/5'
+                        }`}
+                        title="Переместить вверх"
+                      >
+                        <ArrowUp size={14} style={{ color: theme.accent }} />
+                        <span>Вверх</span>
+                      </button>
 
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  togglePinNote(activeNote.id);
-                  setOpenMenuNoteId(null);
-                }}
-                className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
-              >
-                <Pin size={14} style={{ color: theme.accent }} className={activeNote.pinned ? 'fill-current' : ''} />
-                <span>{activeNote.pinned ? 'Открепить' : 'Закрепить'}</span>
-              </button>
+                      <button
+                        disabled={!canMoveDown}
+                        onClick={e => {
+                          e.stopPropagation();
+                          moveNoteInBlock(activeNote.id, 'down');
+                        }}
+                        className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl transition cursor-pointer text-xs ${
+                          !canMoveDown
+                            ? 'opacity-30 cursor-not-allowed bg-white/5'
+                            : 'hover:bg-white/10 active:scale-95 bg-white/5'
+                        }`}
+                        title="Переместить вниз"
+                      >
+                        <ArrowDown size={14} style={{ color: theme.accent }} />
+                        <span>Вниз</span>
+                      </button>
+                    </div>
+                  )}
 
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  duplicateNote(activeNote.id);
-                  setOpenMenuNoteId(null);
-                }}
-                className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
-              >
-                <CopyPlus size={14} style={{ color: theme.accent }} />
-                <span>Дублировать</span>
-              </button>
+                  {hasPin && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        togglePinNote(activeNote.id);
+                        setOpenMenuNoteId(null);
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
+                    >
+                      <Pin size={14} style={{ color: theme.accent }} className={activeNote.pinned ? 'fill-current' : ''} />
+                      <span>{activeNote.pinned ? 'Открепить' : 'Закрепить'}</span>
+                    </button>
+                  )}
 
-              {/* "В блок" Action */}
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  setBlockSubmenuNoteId(activeNote.id);
-                  setOpenMenuNoteId(null);
-                }}
-                className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
-              >
-                <Layers size={14} style={{ color: theme.accent }} />
-                <span>В блок</span>
-              </button>
+                  {hasDuplicate && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        duplicateNote(activeNote.id);
+                        setOpenMenuNoteId(null);
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
+                    >
+                      <CopyPlus size={14} style={{ color: theme.accent }} />
+                      <span>Дублировать</span>
+                    </button>
+                  )}
 
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  setTagSubmenuNoteId(activeNote.id);
-                  setOpenMenuNoteId(null);
-                  setTagSearchQuery('');
-                  setNewTagName('');
-                  setIsCreatingCustomTag(false);
-                }}
-                className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
-              >
-                <TagIcon size={14} style={{ color: theme.accent }} />
-                <span>Добавить тег</span>
-              </button>
+                  {/* "В блок" Action */}
+                  {hasBlock && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setBlockSubmenuNoteId(activeNote.id);
+                        setOpenMenuNoteId(null);
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
+                    >
+                      <Layers size={14} style={{ color: theme.accent }} />
+                      <span>В блок</span>
+                    </button>
+                  )}
 
-              {/* "В приват" Action */}
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  if (!privatePin) {
-                    setTargetPrivateNoteId(activeNote.id);
-                    setIsPinModalOpen(true);
-                  } else {
-                    updateNote(activeNote.id, { isPrivate: !activeNote.isPrivate });
-                  }
-                  setOpenMenuNoteId(null);
-                }}
-                className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
-              >
-                <Shield size={14} style={{ color: theme.accent }} />
-                <span>{activeNote.isPrivate ? 'Убрать из привата' : 'В приват'}</span>
-              </button>
+                  {hasTag && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setTagSubmenuNoteId(activeNote.id);
+                        setOpenMenuNoteId(null);
+                        setTagSearchQuery('');
+                        setNewTagName('');
+                        setIsCreatingCustomTag(false);
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
+                    >
+                      <TagIcon size={14} style={{ color: theme.accent }} />
+                      <span>Добавить тег</span>
+                    </button>
+                  )}
 
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  setOpenMenuNoteId(null);
-                  openExportModal(activeNote.id);
-                }}
-                className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
-              >
-                <Download size={14} style={{ color: theme.accent }} />
-                <span>Экспортировать</span>
-              </button>
+                  {hasExport && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setOpenMenuNoteId(null);
+                        openExportModal(activeNote.id);
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left whitespace-nowrap"
+                    >
+                      <Download size={14} style={{ color: theme.accent }} />
+                      <span>Экспорт</span>
+                    </button>
+                  )}
 
-              <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
-
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  deleteNote(activeNote.id);
-                  setOpenMenuNoteId(null);
-                }}
-                className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-red-500/20 active:scale-98 transition cursor-pointer text-left text-red-500 whitespace-nowrap"
-              >
-                <Trash2 size={14} />
-                <span>Корзина</span>
-              </button>
-            </div>
+                  {hasDelete && (
+                    <>
+                      {hasAnyBeforeDelete && (
+                        <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
+                      )}
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          deleteNote(activeNote.id);
+                          setOpenMenuNoteId(null);
+                        }}
+                        className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-red-500/20 active:scale-98 transition cursor-pointer text-left text-red-500 whitespace-nowrap"
+                      >
+                        <Trash2 size={14} />
+                        <span>Корзина</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })()
           ) : (
             /* Tag Submenu */
             <div className="flex flex-col gap-2 text-xs">
@@ -618,8 +764,9 @@ export const NotesListView: React.FC = () => {
   const renderNoteCard = (note: Note) => {
     const displayMode = quickSettings.tileDisplayMode || 'both';
     const plainContent = stripHtmlTags(note.content) || 'Пустая заметка';
-    const titleText = note.title || 'Без названия';
+    const titleText = note.title?.trim() || 'Без названия';
     const hideDots = !!quickSettings.hideTileDots;
+    const semanticScore = semanticScoresMap.get(note.id);
 
     // Mode 2: Title only — compact card, title and 3-dots on the same level/row, zero wasted space
     if (displayMode === 'title') {
@@ -635,8 +782,7 @@ export const NotesListView: React.FC = () => {
               isLongPressRef.current = false;
               return;
             }
-            setActiveNoteId(note.id);
-            setViewMode('editor');
+            handleOpenNote(note.id);
           }}
           className="group relative p-3.5 sm:p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
           style={{
@@ -645,8 +791,20 @@ export const NotesListView: React.FC = () => {
           }}
         >
           {Boolean(quickSettings.showTileMetadata) && (
-            <div className="text-[9px] sm:text-[10px] font-medium opacity-50 mb-1.5">
-              {formatDate(note.updatedAt)}
+            <div className="text-[9px] sm:text-[10px] font-medium opacity-50 mb-1.5 flex items-center justify-between gap-1">
+              <span>{formatDate(note.updatedAt)}</span>
+              {semanticScore !== undefined && (
+                <span
+                  className="px-1.5 py-0.5 rounded-md text-[9px] font-bold flex items-center gap-0.5"
+                  style={{
+                    backgroundColor: hexToRgba(theme.accent, 0.18),
+                    color: theme.accent,
+                  }}
+                >
+                  <Sparkles size={9} />
+                  <span>{Math.round(semanticScore * 100)}%</span>
+                </span>
+              )}
             </div>
           )}
 
@@ -691,8 +849,7 @@ export const NotesListView: React.FC = () => {
               isLongPressRef.current = false;
               return;
             }
-            setActiveNoteId(note.id);
-            setViewMode('editor');
+            handleOpenNote(note.id);
           }}
           className="group relative p-3.5 sm:p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
           style={{
@@ -701,11 +858,25 @@ export const NotesListView: React.FC = () => {
           }}
         >
           <div className="flex-1">
-            {Boolean(quickSettings.showTileMetadata) && (
-              <div className="text-[9px] sm:text-[10px] font-medium opacity-50 mb-1.5">
-                {formatDate(note.updatedAt)}
-              </div>
-            )}
+            <div className="flex items-center justify-between gap-1 mb-1.5">
+              {Boolean(quickSettings.showTileMetadata) ? (
+                <div className="text-[9px] sm:text-[10px] font-medium opacity-50">
+                  {formatDate(note.updatedAt)}
+                </div>
+              ) : <div />}
+              {semanticScore !== undefined && (
+                <span
+                  className="px-1.5 py-0.5 rounded-md text-[9px] font-bold flex items-center gap-0.5 shrink-0"
+                  style={{
+                    backgroundColor: hexToRgba(theme.accent, 0.18),
+                    color: theme.accent,
+                  }}
+                >
+                  <Sparkles size={9} />
+                  <span>По смыслу {Math.round(semanticScore * 100)}%</span>
+                </span>
+              )}
+            </div>
             <h3
               className="text-xs sm:text-sm font-bold mb-1 group-hover:underline line-clamp-1 pt-0.5"
               style={{ fontFamily: note.titleFont ? getFontFamilyStyle(note.titleFont) : undefined }}
@@ -751,8 +922,7 @@ export const NotesListView: React.FC = () => {
             isLongPressRef.current = false;
             return;
           }
-          setActiveNoteId(note.id);
-          setViewMode('editor');
+          handleOpenNote(note.id);
         }}
         className="group relative p-3 sm:p-5 rounded-2xl border shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between min-h-[100px] sm:min-h-[120px]"
         style={{
@@ -761,11 +931,25 @@ export const NotesListView: React.FC = () => {
         }}
       >
         <div className="flex-1">
-          {Boolean(quickSettings.showTileMetadata) && (
-            <div className="text-[9px] sm:text-[10px] font-medium opacity-50 mb-1 sm:mb-1.5">
-              {formatDate(note.updatedAt)}
-            </div>
-          )}
+          <div className="flex items-center justify-between gap-1 mb-1 sm:mb-1.5">
+            {Boolean(quickSettings.showTileMetadata) ? (
+              <div className="text-[9px] sm:text-[10px] font-medium opacity-50">
+                {formatDate(note.updatedAt)}
+              </div>
+            ) : <div />}
+            {semanticScore !== undefined && (
+              <span
+                className="px-1.5 py-0.5 rounded-md text-[9px] font-bold flex items-center gap-0.5 shrink-0"
+                style={{
+                  backgroundColor: hexToRgba(theme.accent, 0.18),
+                  color: theme.accent,
+                }}
+              >
+                <Sparkles size={9} />
+                <span>{Math.round(semanticScore * 100)}%</span>
+              </span>
+            )}
+          </div>
           <p className="text-xs sm:text-sm opacity-80 line-clamp-4 sm:line-clamp-6 leading-snug sm:leading-relaxed">
             {plainContent}
           </p>
@@ -780,7 +964,7 @@ export const NotesListView: React.FC = () => {
                 setBlockSubmenuNoteId(null);
                 setOpenMenuNoteId(openMenuNoteId === note.id ? null : note.id);
               }}
-              className="p-1 rounded-lg opacity-60 hover:opacity-100 transition cursor-pointer"
+              className="p-1 -mr-1 rounded-lg opacity-60 hover:opacity-100 transition cursor-pointer"
               style={{ color: theme.text }}
               title="Действия"
             >
@@ -792,10 +976,14 @@ export const NotesListView: React.FC = () => {
     );
   };
 
-  const isHorizontal = !!quickSettings.horizontalMainMenu;
-
   return (
     <div
+      ref={mainContainerRef}
+      onScroll={e => {
+        if (!isHorizontal) {
+          savedMainScrollTop = e.currentTarget.scrollTop;
+        }
+      }}
       className={`flex-1 flex flex-col h-full relative select-none ${
         isHorizontal
           ? 'overflow-hidden px-4 md:px-10 pt-4 pb-20'
@@ -848,6 +1036,52 @@ export const NotesListView: React.FC = () => {
               </button>
             </div>
           )}
+
+          {/* Semantic Search Mode / Manual Trigger Button */}
+          {searchQuery.trim() && semanticSearchSettings.enabled && (
+            <button
+              type="button"
+              onClick={() => {
+                if (semanticSearchSettings.triggerMode === 'manual') {
+                  setIsSemanticSearchActive(!isSemanticSearchActive);
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all border ${
+                isSemanticEffectiveActive
+                  ? 'shadow-xs cursor-pointer'
+                  : 'opacity-70 hover:opacity-100 cursor-pointer'
+              }`}
+              style={{
+                backgroundColor: isSemanticEffectiveActive
+                  ? hexToRgba(theme.accent, 0.25)
+                  : hexToRgba(theme.text, 0.05),
+                borderColor: isSemanticEffectiveActive
+                  ? theme.accent
+                  : hexToRgba(theme.text, 0.15),
+                color: isSemanticEffectiveActive ? theme.accent : theme.text,
+              }}
+              title={
+                semanticSearchSettings.triggerMode === 'manual'
+                  ? isSemanticSearchActive
+                    ? 'Семантический поиск активен (нажмите, чтобы отключить для экономии батареи)'
+                    : 'Включить локальный семантический поиск по смыслу'
+                  : 'Семантический поиск работает автоматически'
+              }
+            >
+              {isSemanticSearching ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <FileSearch size={12} style={{ color: theme.accent }} />
+              )}
+              <span>
+                {isSemanticEffectiveActive
+                  ? semanticMatches.length > 0
+                    ? `По смыслу (${semanticMatches.length})`
+                    : 'Поиск по смыслу...'
+                  : 'Искать по смыслу'}
+              </span>
+            </button>
+          )}
           {selectedTagFilter && (
             <div
               className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold"
@@ -870,7 +1104,12 @@ export const NotesListView: React.FC = () => {
       )}
 
       {/* Dynamic Blocks Rendering */}
-      {filteredNotes.length === 0 ? (
+      <div
+        className={`flex-1 flex flex-col min-h-0 transition-opacity duration-200 ${
+          isTagSearchOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
+      >
+        {filteredNotes.length === 0 ? (
         <div className="text-center py-16 opacity-50">
           <p className="text-sm font-medium">
             {searchQuery.trim()
@@ -882,7 +1121,13 @@ export const NotesListView: React.FC = () => {
         </div>
       ) : isHorizontal ? (
         /* HORIZONTAL LAYOUT: Blocks arranged horizontally (columns side by side), notes scroll full height */
-        <div className="flex-1 flex flex-row overflow-x-auto overflow-y-hidden gap-4 sm:gap-6 items-stretch pb-2">
+        <div
+          ref={horizontalContainerRef}
+          onScroll={e => {
+            savedHorizontalScrollLeft = e.currentTarget.scrollLeft;
+          }}
+          className="flex-1 flex flex-row overflow-x-auto overflow-y-hidden gap-4 sm:gap-6 items-stretch pb-2"
+        >
           {blocks.map((block, blockIndex) => {
             const blockNotes = getNotesForBlock(block, filteredNotes);
             if (blockNotes.length === 0) return null;
@@ -899,9 +1144,9 @@ export const NotesListView: React.FC = () => {
                 }}
               >
                 {/* Block Header with Actions */}
-                <div className="flex items-center justify-between pb-2 border-b shrink-0 relative" style={{ borderColor: hexToRgba(theme.text, 0.08) }}>
+                <div className="flex items-center justify-between pb-1.5 shrink-0 relative">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xs font-semibold uppercase tracking-wider opacity-60 flex items-center gap-1.5">
+                    <h2 className={`text-xs font-semibold tracking-wider opacity-60 flex items-center gap-1.5 ${quickSettings.uppercaseBlockNames ? 'uppercase' : ''}`}>
                       <span>{block.name}</span>
                       <span className="text-[11px] font-normal opacity-60 ml-0.5">{blockNotes.length}</span>
                     </h2>
@@ -962,8 +1207,6 @@ export const NotesListView: React.FC = () => {
 
                         {block.type === 'custom' && (
                           <>
-                            <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
-                            
                             <button
                               onClick={() => {
                                 openCreateBlockModal([], block);
@@ -974,6 +1217,8 @@ export const NotesListView: React.FC = () => {
                               <Edit2 size={13} style={{ color: theme.accent }} />
                               <span>Переименовать</span>
                             </button>
+
+                            <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
 
                             <button
                               onClick={() => {
@@ -993,7 +1238,13 @@ export const NotesListView: React.FC = () => {
                 </div>
 
                 {/* Notes in this block column (scrolling full column height) */}
-                <div className="flex-1 overflow-y-auto space-y-3 pr-1 pt-3 pb-8">
+                <div
+                  id={`notes-block-col-${block.id}`}
+                  onScroll={e => {
+                    savedColumnScrollTops[block.id] = e.currentTarget.scrollTop;
+                  }}
+                  className="flex-1 overflow-y-auto space-y-3 pr-1 pt-3 pb-8"
+                >
                   {blockNotes.map(note => renderNoteCard(note))}
                 </div>
               </div>
@@ -1014,7 +1265,7 @@ export const NotesListView: React.FC = () => {
                 {/* Block Header with Actions */}
                 <div className="flex items-center justify-between relative">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xs font-semibold uppercase tracking-wider opacity-60 flex items-center gap-1.5">
+                    <h2 className={`text-xs font-semibold tracking-wider opacity-60 flex items-center gap-1.5 ${quickSettings.uppercaseBlockNames ? 'uppercase' : ''}`}>
                       <span>{block.name}</span>
                       <span className="text-[10px] opacity-75 font-bold ml-0.5">{blockNotes.length}</span>
                     </h2>
@@ -1075,8 +1326,6 @@ export const NotesListView: React.FC = () => {
 
                         {block.type === 'custom' && (
                           <>
-                            <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
-                            
                             <button
                               onClick={() => {
                                 openCreateBlockModal([], block);
@@ -1087,6 +1336,8 @@ export const NotesListView: React.FC = () => {
                               <Edit2 size={13} style={{ color: theme.accent }} />
                               <span>Переименовать</span>
                             </button>
+
+                            <div className="h-px my-0.5" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />
 
                             <button
                               onClick={() => {
@@ -1113,12 +1364,13 @@ export const NotesListView: React.FC = () => {
           })}
         </div>
       )}
+      </div>
 
       {/* Action Modal (Centered, safely bounded inside viewport) */}
       {renderNoteActionModal()}
 
       {/* Floating Bottom Center Create Button */}
-      {!sidebarOpen && (
+      {!sidebarOpen && !isTagSearchOpen && (
         <div className="fixed bottom-6 inset-x-0 z-30 pointer-events-none flex justify-center px-4">
           <button
             onClick={() => createNote()}

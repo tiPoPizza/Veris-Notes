@@ -14,6 +14,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { hexToRgba, isLightColor } from '../themes';
 import { isColorLight } from '../utils/textUtils';
+import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS } from '../types';
 
 export const HIGHLIGHT_COLORS = [
   { id: 'mustard', color: '#9E862B', label: 'Горчичный' },
@@ -40,6 +41,10 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
   const { theme, quickSettings } = useApp();
   const [activeSubmenu, setActiveSubmenu] = useState<'align' | 'heading' | 'color' | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const alignBtnRef = useRef<HTMLButtonElement>(null);
+  const headingBtnRef = useRef<HTMLButtonElement>(null);
+  const colorBtnRef = useRef<HTMLButtonElement>(null);
+
   const [toolbarSize, setToolbarSize] = useState<{ width: number; height: number }>({
     width: 320,
     height: 44,
@@ -76,19 +81,90 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
   const menuBorder = quickSettings.showBorder ? theme.accent : hexToRgba(menuText, 0.2);
 
   // Calculate position strictly clamped within viewport boundaries
+  const HEADER_HEIGHT = 72;
+  const BOTTOM_MARGIN = 16;
   const padX = 8;
-  const padY = 8;
+
   const idealLeft = selectionRect.left + selectionRect.width / 2 - toolbarSize.width / 2;
   const maxLeft = Math.max(padX, window.innerWidth - toolbarSize.width - padX);
   const leftPos = Math.max(padX, Math.min(maxLeft, idealLeft));
 
-  // Determine whether to place above or below selection
-  const showSubmenuBelow = selectionRect.top < 70;
-  const topPos = showSubmenuBelow
-    ? Math.min(window.innerHeight - toolbarSize.height - padY, selectionRect.bottom + 8)
-    : Math.max(padY, selectionRect.top - toolbarSize.height - 8);
+  // Determine whether toolbar is placed above or below selection
+  const canFitToolbarAbove = selectionRect.top - toolbarSize.height - 8 >= HEADER_HEIGHT;
+  const canFitToolbarBelow =
+    selectionRect.bottom + 8 + toolbarSize.height <= window.innerHeight - BOTTOM_MARGIN;
 
-  const submenuPosClass = showSubmenuBelow ? 'top-full mt-2' : 'bottom-full mb-2';
+  let placeToolbarBelow = false;
+  if (!canFitToolbarAbove && canFitToolbarBelow) {
+    placeToolbarBelow = true;
+  } else if (!canFitToolbarAbove && !canFitToolbarBelow) {
+    const spaceBelow = window.innerHeight - selectionRect.bottom;
+    const spaceAbove = selectionRect.top - HEADER_HEIGHT;
+    placeToolbarBelow = spaceBelow > spaceAbove;
+  } else {
+    placeToolbarBelow = false;
+  }
+
+  const topPos = placeToolbarBelow
+    ? Math.min(
+        window.innerHeight - toolbarSize.height - BOTTOM_MARGIN,
+        Math.max(HEADER_HEIGHT, selectionRect.bottom + 8)
+      )
+    : Math.max(
+        HEADER_HEIGHT,
+        Math.min(
+          window.innerHeight - toolbarSize.height - BOTTOM_MARGIN,
+          selectionRect.top - toolbarSize.height - 8
+        )
+      );
+
+  // Compute submenu style to guarantee it never extends outside viewport or behind top header
+  const getSubmenuPlacementStyle = (
+    btnRef: React.RefObject<HTMLButtonElement | null>,
+    submenuWidth: number,
+    submenuHeight: number
+  ): React.CSSProperties => {
+    let leftOffset = 0;
+    if (btnRef.current && toolbarRef.current) {
+      const btnLeft = btnRef.current.offsetLeft;
+      const btnWidth = btnRef.current.offsetWidth;
+      const idealCenter = btnLeft + btnWidth / 2 - submenuWidth / 2;
+
+      // Since toolbar is at leftPos on screen, screenX = leftPos + leftOffset.
+      // We want: padX <= screenX <= window.innerWidth - submenuWidth - padX.
+      const minOffset = padX - leftPos;
+      const maxOffset = window.innerWidth - submenuWidth - padX - leftPos;
+      leftOffset = Math.max(minOffset, Math.min(maxOffset, idealCenter));
+    }
+
+    const spaceAbove = topPos - HEADER_HEIGHT;
+    const spaceBelow = window.innerHeight - (topPos + toolbarSize.height) - BOTTOM_MARGIN;
+
+    const fitsAbove = spaceAbove >= submenuHeight + 8;
+    const fitsBelow = spaceBelow >= submenuHeight + 8;
+
+    const placeBelow =
+      (!fitsAbove && fitsBelow) ||
+      (!fitsAbove && !fitsBelow && spaceBelow >= spaceAbove) ||
+      (fitsBelow && spaceBelow > spaceAbove && spaceAbove < 180);
+
+    const style: React.CSSProperties = {
+      position: 'absolute',
+      left: `${leftOffset}px`,
+      width: `${submenuWidth}px`,
+      zIndex: 60,
+    };
+
+    if (placeBelow) {
+      style.top = 'calc(100% + 8px)';
+      style.maxHeight = `${Math.max(120, spaceBelow - 12)}px`;
+    } else {
+      style.bottom = 'calc(100% + 8px)';
+      style.maxHeight = `${Math.max(120, spaceAbove - 12)}px`;
+    }
+
+    return style;
+  };
 
   // Helper to execute document commands safely
   const exec = (command: string, value: string = '') => {
@@ -249,13 +325,108 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
     activeColorHex,
   } = checkFormatState();
 
-  // Toggle Quote on / off
-  const handleQuoteToggle = () => {
-    if (isQuoteActive) {
-      document.execCommand('formatBlock', false, '<p>');
-    } else {
-      document.execCommand('formatBlock', false, '<blockquote>');
+  // Helper to extract text nodes intersecting range
+  const getTextNodesInRange = (range: Range): Text[] => {
+    const textNodes: Text[] = [];
+    const root = range.commonAncestorContainer;
+
+    if (root.nodeType === Node.TEXT_NODE) {
+      textNodes.push(root as Text);
+      return textNodes;
     }
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        try {
+          if (!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
+          if (!node.nodeValue || node.nodeValue.length === 0) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        } catch (e) {
+          return NodeFilter.FILTER_REJECT;
+        }
+      },
+    });
+
+    let currentNode = walker.nextNode();
+    while (currentNode) {
+      textNodes.push(currentNode as Text);
+      currentNode = walker.nextNode();
+    }
+    return textNodes;
+  };
+
+  // Toggle Quote on / off preserving empty lines intact
+  const handleQuoteToggle = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+
+    const range = sel.getRangeAt(0);
+    const existingQuote = sel.anchorNode
+      ? ((sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode as HTMLElement : sel.anchorNode.parentElement)?.closest('blockquote') as HTMLElement | null)
+      : null;
+
+    if (existingQuote || isQuoteActive) {
+      const bq = existingQuote || (sel.anchorNode ? (sel.anchorNode.parentElement?.closest('blockquote') as HTMLElement | null) : null);
+      if (bq && bq.parentNode) {
+        const parent = bq.parentNode;
+        const frag = document.createDocumentFragment();
+        while (bq.firstChild) {
+          frag.appendChild(bq.firstChild);
+        }
+        parent.replaceChild(frag, bq);
+      } else {
+        document.execCommand('formatBlock', false, '<p>');
+      }
+      onApplyFormat();
+      return;
+    }
+
+    // Find the editor container
+    const editorEl = (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? range.commonAncestorContainer as HTMLElement
+      : range.commonAncestorContainer.parentElement)?.closest('[contenteditable="true"]') as HTMLElement | null;
+
+    if (!editorEl) {
+      document.execCommand('formatBlock', false, '<blockquote>');
+      onApplyFormat();
+      return;
+    }
+
+    // Collect all top-level children of editorEl that intersect the selection
+    const childrenToQuote: Node[] = [];
+    for (let i = 0; i < editorEl.childNodes.length; i++) {
+      const child = editorEl.childNodes[i];
+      if (range.intersectsNode(child)) {
+        childrenToQuote.push(child);
+      }
+    }
+
+    if (childrenToQuote.length === 0) {
+      let block: HTMLElement | null = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer as HTMLElement : range.startContainer.parentElement;
+      while (block && block.parentElement !== editorEl && block !== editorEl) {
+        block = block.parentElement;
+      }
+      if (block && block !== editorEl) {
+        childrenToQuote.push(block);
+      }
+    }
+
+    if (childrenToQuote.length > 0) {
+      const bq = document.createElement('blockquote');
+      editorEl.insertBefore(bq, childrenToQuote[0]);
+      childrenToQuote.forEach(child => {
+        bq.appendChild(child);
+      });
+
+      const newRange = document.createRange();
+      newRange.selectNodeContents(bq);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+      onApplyFormat();
+      return;
+    }
+
+    document.execCommand('formatBlock', false, '<blockquote>');
     onApplyFormat();
   };
 
@@ -269,69 +440,108 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
     onApplyFormat();
   };
 
-  // Handle color highlight toggle / switch
+  // Handle color highlight toggle / switch with multi-line, newline, and empty line safety
   const handleColorClick = (colorHex: string) => {
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed) return;
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
 
-    const existingSpan = getHighlightSpanInSelection();
+    const range = sel.getRangeAt(0);
+    const isLightTxt = isColorLight(colorHex);
 
-    if (existingSpan) {
-      const existingColor =
-        existingSpan.getAttribute('data-color') || existingSpan.style.backgroundColor;
+    // Collect all text nodes in selection
+    const textNodes = getTextNodesInRange(range);
+    if (textNodes.length === 0) return;
 
-      // If clicking same color -> REMOVE highlight
-      if (hexOrRgbMatch(existingColor, colorHex)) {
-        const parent = existingSpan.parentNode;
+    // Check if all selected text nodes are already highlighted with the requested colorHex
+    const existingSpansInSelection = new Set<HTMLElement>();
+    textNodes.forEach(tn => {
+      const sp = (tn.parentElement?.closest('span[data-highlight="true"]') as HTMLElement | null);
+      if (sp) existingSpansInSelection.add(sp);
+    });
+
+    const isAllSameColor =
+      existingSpansInSelection.size > 0 &&
+      Array.from(existingSpansInSelection).every(sp => {
+        const col = sp.getAttribute('data-color') || sp.style.backgroundColor;
+        return hexOrRgbMatch(col, colorHex);
+      });
+
+    if (isAllSameColor) {
+      // Toggle off: remove highlight
+      existingSpansInSelection.forEach(sp => {
+        const parent = sp.parentNode;
         if (parent) {
-          while (existingSpan.firstChild) {
-            parent.insertBefore(existingSpan.firstChild, existingSpan);
+          while (sp.firstChild) {
+            parent.insertBefore(sp.firstChild, sp);
           }
-          parent.removeChild(existingSpan);
+          parent.removeChild(sp);
         }
-        onApplyFormat();
-        return;
+      });
+      onApplyFormat();
+      return;
+    }
+
+    // Apply color: process nodes in reverse order so splitting doesn't invalidate offsets of earlier nodes
+    const processedSpans: HTMLElement[] = [];
+
+    for (let i = textNodes.length - 1; i >= 0; i--) {
+      const node = textNodes[i];
+      if (!node.nodeValue) continue;
+
+      const isStart = (node === range.startContainer);
+      const isEnd = (node === range.endContainer);
+      const start = isStart ? range.startOffset : 0;
+      const end = isEnd ? range.endOffset : node.nodeValue.length;
+
+      if (start >= end) continue;
+
+      // Skip whitespace-only nodes that are purely inter-block whitespace
+      const content = node.nodeValue.substring(start, end);
+      if (/^[\r\n\t]+$/.test(content)) continue;
+
+      let targetNode = node;
+      if (end < targetNode.nodeValue.length) {
+        targetNode.splitText(end);
+      }
+      if (start > 0) {
+        targetNode = targetNode.splitText(start);
+      }
+
+      // Check if targetNode is already inside a highlight span
+      const parentSpan = targetNode.parentElement?.closest('span[data-highlight="true"]') as HTMLElement | null;
+      if (parentSpan) {
+        parentSpan.style.backgroundColor = colorHex;
+        parentSpan.style.color = isLightTxt ? '#000000' : '#FFFFFF';
+        parentSpan.setAttribute('data-color', colorHex);
+        processedSpans.unshift(parentSpan);
       } else {
-        // Change color on existing span
-        const isLightTxt = isColorLight(colorHex);
-        existingSpan.style.backgroundColor = colorHex;
-        existingSpan.style.color = isLightTxt ? '#000000' : '#FFFFFF';
-        existingSpan.setAttribute('data-color', colorHex);
+        const span = document.createElement('span');
+        span.setAttribute('data-highlight', 'true');
+        span.setAttribute('data-color', colorHex);
+        span.style.backgroundColor = colorHex;
+        span.style.color = isLightTxt ? '#000000' : '#FFFFFF';
+        span.style.padding = '0.32em 4px';
+        span.style.borderRadius = '2px';
+        span.style.display = 'inline';
+        span.style.boxDecorationBreak = 'clone';
+        (span.style as any).webkitBoxDecorationBreak = 'clone';
 
-        // Remove any nested highlight spans
-        const innerSpans = existingSpan.querySelectorAll('span[data-highlight="true"]');
-        innerSpans.forEach(inner => {
-          while (inner.firstChild) {
-            inner.parentNode?.insertBefore(inner.firstChild, inner);
-          }
-          inner.parentNode?.removeChild(inner);
-        });
-
-        onApplyFormat();
-        return;
+        targetNode.parentNode?.insertBefore(span, targetNode);
+        span.appendChild(targetNode);
+        processedSpans.unshift(span);
       }
     }
 
-    // Wrap selection in a new highlight span
-    const range = sel.getRangeAt(0);
-    const isLightTxt = isColorLight(colorHex);
-    const span = document.createElement('span');
-    span.setAttribute('data-highlight', 'true');
-    span.setAttribute('data-color', colorHex);
-    span.style.backgroundColor = colorHex;
-    span.style.color = isLightTxt ? '#000000' : '#FFFFFF';
-    span.style.padding = '2px 8px';
-    span.style.borderRadius = '8px';
-    span.style.display = 'inline';
-    span.style.boxDecorationBreak = 'clone';
-    (span.style as any).webkitBoxDecorationBreak = 'clone';
-
-    try {
-      range.surroundContents(span);
-    } catch (e) {
-      const fragment = range.extractContents();
-      span.appendChild(fragment);
-      range.insertNode(span);
+    if (processedSpans.length > 0) {
+      try {
+        const newRange = document.createRange();
+        newRange.setStartBefore(processedSpans[0]);
+        newRange.setEndAfter(processedSpans[processedSpans.length - 1]);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      } catch (e) {
+        // ignore selection restore error
+      }
     }
 
     onApplyFormat();
@@ -359,6 +569,18 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
       ? AlignRight
       : AlignLeft;
 
+  const enabledButtons = quickSettings.formattingToolbarButtons || ALL_FORMATTING_TOOLBAR_BUTTONS;
+  const isBtnEnabled = (id: FormattingToolbarButtonId) => enabledButtons.includes(id);
+
+  const hasClipboard = isBtnEnabled('cut') || isBtnEnabled('copy');
+  const hasInline = isBtnEnabled('bold') || isBtnEnabled('italic') || isBtnEnabled('underline');
+  const hasBlock = isBtnEnabled('align') || isBtnEnabled('heading') || isBtnEnabled('quote') || isBtnEnabled('code');
+  const hasColor = isBtnEnabled('color');
+
+  if (!hasClipboard && !hasInline && !hasBlock && !hasColor) {
+    return null;
+  }
+
   return (
     <div
       ref={toolbarRef}
@@ -380,141 +602,171 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
         }}
       >
         {/* Cut Button */}
-        <button
-          onClick={handleCut}
-          style={getBtnStyle(false)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-medium text-xs flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-          title="Вырезать"
-        >
-          <Scissors size={14} className="sm:w-[15px] sm:h-[15px]" />
-        </button>
+        {isBtnEnabled('cut') && (
+          <button
+            onClick={handleCut}
+            style={getBtnStyle(false)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-medium text-xs flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Вырезать"
+          >
+            <Scissors size={14} className="sm:w-[15px] sm:h-[15px]" />
+          </button>
+        )}
 
         {/* Copy Button */}
-        <button
-          onClick={handleCopy}
-          style={getBtnStyle(false)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-medium text-xs flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-          title="Копировать"
-        >
-          <Copy size={14} className="sm:w-[15px] sm:h-[15px]" />
-        </button>
+        {isBtnEnabled('copy') && (
+          <button
+            onClick={handleCopy}
+            style={getBtnStyle(false)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-medium text-xs flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Копировать"
+          >
+            <Copy size={14} className="sm:w-[15px] sm:h-[15px]" />
+          </button>
+        )}
 
-        <div
-          className="w-[1px] h-4 sm:h-5 my-auto mx-0.5 shrink-0"
-          style={{ backgroundColor: hexToRgba(menuText, 0.2) }}
-        />
+        {hasClipboard && (hasInline || hasBlock || hasColor) && (
+          <div
+            className="w-[1px] h-4 sm:h-5 my-auto mx-0.5 shrink-0"
+            style={{ backgroundColor: hexToRgba(menuText, 0.2) }}
+          />
+        )}
 
         {/* Bold B */}
-        <button
-          onClick={() => exec('bold')}
-          style={getBtnStyle(isBold)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-          title="Жирный"
-        >
-          B
-        </button>
+        {isBtnEnabled('bold') && (
+          <button
+            onClick={() => exec('bold')}
+            style={getBtnStyle(isBold)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Жирный"
+          >
+            B
+          </button>
+        )}
 
         {/* Italic I */}
-        <button
-          onClick={() => exec('italic')}
-          style={getBtnStyle(isItalic)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-extrabold italic text-xs sm:text-sm flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-          title="Курсив"
-        >
-          I
-        </button>
+        {isBtnEnabled('italic') && (
+          <button
+            onClick={() => exec('italic')}
+            style={getBtnStyle(isItalic)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-extrabold italic text-xs sm:text-sm flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Курсив"
+          >
+            I
+          </button>
+        )}
 
         {/* Underline U */}
-        <button
-          onClick={() => exec('underline')}
-          style={getBtnStyle(isUnderline)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-extrabold underline text-xs sm:text-sm flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-          title="Подчёркнутый"
-        >
-          U
-        </button>
+        {isBtnEnabled('underline') && (
+          <button
+            onClick={() => exec('underline')}
+            style={getBtnStyle(isUnderline)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-extrabold underline text-xs sm:text-sm flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Подчёркнутый"
+          >
+            U
+          </button>
+        )}
 
-        <div
-          className="w-[1px] h-4 sm:h-5 my-auto mx-0.5 shrink-0"
-          style={{ backgroundColor: hexToRgba(menuText, 0.2) }}
-        />
+        {hasInline && (hasBlock || hasColor) && (
+          <div
+            className="w-[1px] h-4 sm:h-5 my-auto mx-0.5 shrink-0"
+            style={{ backgroundColor: hexToRgba(menuText, 0.2) }}
+          />
+        )}
 
         {/* Alignment Submenu Button */}
-        <button
-          onClick={() => setActiveSubmenu(prev => (prev === 'align' ? null : 'align'))}
-          style={
-            activeSubmenu === 'align'
-              ? { color: theme.accent, backgroundColor: hexToRgba(menuText, 0.15) }
-              : { color: menuText }
-          }
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95"
-          title="Выравнивание"
-        >
-          <AlignmentIcon size={14} className="sm:w-4 sm:h-4" />
-        </button>
+        {isBtnEnabled('align') && (
+          <button
+            ref={alignBtnRef}
+            onClick={() => setActiveSubmenu(prev => (prev === 'align' ? null : 'align'))}
+            style={
+              activeSubmenu === 'align'
+                ? { color: theme.accent, backgroundColor: hexToRgba(menuText, 0.15) }
+                : { color: menuText }
+            }
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95"
+            title="Выравнивание"
+          >
+            <AlignmentIcon size={14} className="sm:w-4 sm:h-4" />
+          </button>
+        )}
 
         {/* Heading Submenu Button */}
-        <button
-          onClick={() => setActiveSubmenu(prev => (prev === 'heading' ? null : 'heading'))}
-          style={
-            activeSubmenu === 'heading'
-              ? { color: theme.accent, backgroundColor: hexToRgba(menuText, 0.15) }
-              : { color: menuText }
-          }
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95"
-          title="Заголовки (H1-H4)"
-        >
-          H
-        </button>
+        {isBtnEnabled('heading') && (
+          <button
+            ref={headingBtnRef}
+            onClick={() => setActiveSubmenu(prev => (prev === 'heading' ? null : 'heading'))}
+            style={
+              activeSubmenu === 'heading'
+                ? { color: theme.accent, backgroundColor: hexToRgba(menuText, 0.15) }
+                : { color: menuText }
+            }
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95"
+            title="Заголовки (H1-H4)"
+          >
+            H
+          </button>
+        )}
 
         {/* Quote Button (Toggle) */}
-        <button
-          onClick={handleQuoteToggle}
-          style={getBtnStyle(isQuoteActive)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-          title="Цитата (повторное нажатие отменяет)"
-        >
-          <Quote size={14} className="sm:w-[15px] sm:h-[15px]" />
-        </button>
+        {isBtnEnabled('quote') && (
+          <button
+            onClick={handleQuoteToggle}
+            style={getBtnStyle(isQuoteActive)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Цитата (повторное нажатие отменяет)"
+          >
+            <Quote size={14} className="sm:w-[15px] sm:h-[15px]" />
+          </button>
+        )}
 
         {/* Code Button (Toggle) */}
-        <button
-          onClick={handleCodeToggle}
-          style={getBtnStyle(isCodeActive)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-          title="Код (повторное нажатие отменяет)"
-        >
-          <Code size={14} className="sm:w-[15px] sm:h-[15px]" />
-        </button>
+        {isBtnEnabled('code') && (
+          <button
+            onClick={handleCodeToggle}
+            style={getBtnStyle(isCodeActive)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Код (повторное нажатие отменяет)"
+          >
+            <Code size={14} className="sm:w-[15px] sm:h-[15px]" />
+          </button>
+        )}
 
-        <div
-          className="w-[1px] h-4 sm:h-5 my-auto mx-0.5 shrink-0"
-          style={{ backgroundColor: hexToRgba(menuText, 0.2) }}
-        />
+        {hasBlock && hasColor && (
+          <div
+            className="w-[1px] h-4 sm:h-5 my-auto mx-0.5 shrink-0"
+            style={{ backgroundColor: hexToRgba(menuText, 0.2) }}
+          />
+        )}
 
         {/* Highlight Color Button */}
-        <button
-          onClick={() => setActiveSubmenu(prev => (prev === 'color' ? null : 'color'))}
-          style={
-            isHighlightActive && activeColorHex
-              ? {
-                  backgroundColor: activeColorHex,
-                  color: isColorLight(activeColorHex) ? '#000000' : '#FFFFFF',
-                }
-              : getBtnStyle(activeSubmenu === 'color')
-          }
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-          title="Выделение цветом"
-        >
-          <Highlighter size={14} className="sm:w-4 sm:h-4" />
-        </button>
+        {isBtnEnabled('color') && (
+          <button
+            ref={colorBtnRef}
+            onClick={() => setActiveSubmenu(prev => (prev === 'color' ? null : 'color'))}
+            style={
+              isHighlightActive && activeColorHex
+                ? {
+                    backgroundColor: activeColorHex,
+                    color: isColorLight(activeColorHex) ? '#000000' : '#FFFFFF',
+                  }
+                : getBtnStyle(activeSubmenu === 'color')
+            }
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Выделение цветом"
+          >
+            <Highlighter size={14} className="sm:w-4 sm:h-4" />
+          </button>
+        )}
       </div>
 
       {/* Submenu 1: Alignment */}
-      {activeSubmenu === 'align' && (
+      {activeSubmenu === 'align' && isBtnEnabled('align') && (
         <div
-          className={`absolute left-0 ${submenuPosClass} w-36 p-1.5 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fadeIn space-y-1 text-xs font-bold z-50`}
+          className="p-1.5 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fadeIn space-y-1 text-xs font-bold overflow-y-auto custom-scrollbar"
           style={{
+            ...getSubmenuPlacementStyle(alignBtnRef, 144, 130),
             backgroundColor: menuBg,
             borderColor: menuBorder,
             color: menuText,
@@ -583,10 +835,11 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
       )}
 
       {/* Submenu 2: Headings (H1 - H4) */}
-      {activeSubmenu === 'heading' && (
+      {activeSubmenu === 'heading' && isBtnEnabled('heading') && (
         <div
-          className={`absolute left-4 sm:left-10 ${submenuPosClass} w-44 p-1.5 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fadeIn space-y-1 text-xs font-bold z-50 max-h-[80vh] overflow-y-auto`}
+          className="p-1.5 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fadeIn space-y-1 text-xs font-bold overflow-y-auto custom-scrollbar"
           style={{
+            ...getSubmenuPlacementStyle(headingBtnRef, 176, 220),
             backgroundColor: menuBg,
             borderColor: menuBorder,
             color: menuText,
@@ -685,10 +938,11 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
       )}
 
       {/* Submenu 3: Color Palette */}
-      {activeSubmenu === 'color' && (
+      {activeSubmenu === 'color' && isBtnEnabled('color') && (
         <div
-          className={`absolute ${leftPos + toolbarSize.width > 220 ? 'right-0' : 'left-0'} ${submenuPosClass} p-2.5 sm:p-3 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fadeIn z-50`}
+          className="p-2.5 sm:p-3 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fadeIn overflow-y-auto custom-scrollbar"
           style={{
+            ...getSubmenuPlacementStyle(colorBtnRef, 196, 160),
             backgroundColor: menuBg,
             borderColor: menuBorder,
           }}

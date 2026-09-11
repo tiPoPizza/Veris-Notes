@@ -2,73 +2,58 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { getTranslation } from '../i18n';
 import { hexToRgba, isLightColor } from '../themes';
-import { Image as ImageIcon, FileText, Check, GripVertical, Trash2, Mic } from 'lucide-react';
-import { NoteAttachment } from '../types';
+import { Image as ImageIcon, FileText, Check, GripVertical, Trash2, Mic, Layers } from 'lucide-react';
+import { NoteAttachment, NoteBlock } from '../types';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { FormattingToolbar } from './FormattingToolbar';
 import { FloatingNoteSearch } from './FloatingNoteSearch';
 import { NoteReadModal } from './NoteReadModal';
+import { BlockNotesModal } from './BlockNotesModal';
 import { stripHtmlTags } from '../utils/textUtils';
 import { getFontFamilyStyle } from '../utils/fonts';
 
 /**
- * Generates an Android 15-17 Material You wavy seekbar SVG.
- * The played portion is a smooth sinusoidal wave ending in a vertical pill thumb knob.
- * The unplayed portion is a subtle straight line extending all the way to the end.
+ * Generates a clean, bold straight seekbar SVG with accent color.
+ * The played portion is a bold straight line in theme.accent ending in a smooth thumb knob.
+ * The unplayed portion is a clean subtle straight track extending to the end.
  */
-function renderAndroidWavyScrubberSvg(
+function renderStraightScrubberSvg(
   progress: number, // 0.0 to 1.0
   accentColor: string,
   textColor: string,
   isLight: boolean
 ): string {
   const width = 1000;
-  const height = 28;
-  const midY = 14;
+  const height = 20;
+  const midY = 10;
   const clampedProgress = Math.max(0, Math.min(1, progress));
   const playedX = Math.round(clampedProgress * width);
-  const wavelength = 140; // ~7 wide, gentle, organic wave crests across 1000px (matches Android 15-17)
-  const amplitude = 4.8; // wave amplitude
 
-  // Build the smooth sine wave path from x=0 to x=playedX
-  let wavePath = '';
-  if (playedX > 0) {
-    wavePath = `M 0,${midY}`;
-    const step = 4;
-    for (let x = step; x <= playedX; x += step) {
-      const y = midY - amplitude * Math.sin((2 * Math.PI * x) / wavelength);
-      wavePath += ` L ${x},${y.toFixed(2)}`;
-    }
-    if (playedX % step !== 0) {
-      const y = midY - amplitude * Math.sin((2 * Math.PI * playedX) / wavelength);
-      wavePath += ` L ${playedX},${y.toFixed(2)}`;
-    }
-  }
+  const unplayedLine = `<line x1="0" y1="${midY}" x2="${width}" y2="${midY}" stroke="${textColor}" stroke-opacity="${isLight ? '0.18' : '0.24'}" stroke-width="4.5" stroke-linecap="round" />`;
 
-  const unplayedXStart = Math.min(width, playedX + (playedX > 0 ? 1 : 0));
-  const unplayedLine =
-    unplayedXStart < width
-      ? `<line x1="${unplayedXStart}" y1="${midY}" x2="${width}" y2="${midY}" stroke="${textColor}" stroke-opacity="${isLight ? '0.22' : '0.28'}" stroke-width="3.5" stroke-linecap="round" />`
+  const playedLine =
+    playedX > 0
+      ? `<line x1="0" y1="${midY}" x2="${playedX}" y2="${midY}" stroke="${accentColor}" stroke-width="4.5" stroke-linecap="round" />`
       : '';
 
-  const thumbX = Math.max(0, Math.min(width - 5, playedX - 2.25));
+  const thumbX = Math.max(0, Math.min(width - 5, playedX - 2.5));
   const thumbPill = `
     <rect 
       class="veris-audio-thumb" 
       x="${thumbX}" 
-      y="5" 
-      width="4.5" 
-      height="18" 
-      rx="2.25" 
+      y="2" 
+      width="5" 
+      height="16" 
+      rx="2.5" 
       fill="${accentColor}" 
-      style="filter: drop-shadow(0 1px 2.5px rgba(0,0,0,0.35));"
+      style="filter: drop-shadow(0 1px 3px rgba(0,0,0,0.38));"
     />
   `;
 
   return `
-    <svg class="veris-audio-seekbar-svg w-full h-7 cursor-pointer overflow-visible select-none pointer-events-auto" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+    <svg class="veris-audio-seekbar-svg w-full h-5 cursor-pointer overflow-visible select-none pointer-events-auto" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
       ${unplayedLine}
-      ${playedX > 0 ? `<path class="veris-audio-wave-path" d="${wavePath}" fill="none" stroke="${accentColor}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+      ${playedLine}
       ${thumbPill}
     </svg>
   `;
@@ -80,7 +65,9 @@ function renderAndroidWavyScrubberSvg(
 function createAttachmentEmbedDom(
   att: NoteAttachment,
   isLight: boolean,
-  accentColor: string
+  accentColor: string,
+  themeBg: string,
+  themeText: string
 ): HTMLElement {
   const isAudio =
     att.type.startsWith('audio/') ||
@@ -89,59 +76,71 @@ function createAttachmentEmbedDom(
   if (isAudio) {
     const div = document.createElement('div');
     div.className =
-      'veris-audio-embed my-3 py-2 px-3 rounded-2xl flex items-center gap-2.5 select-none cursor-default w-full max-w-lg border transition shadow-lg';
+      'veris-audio-embed my-3 p-3.5 rounded-2xl flex flex-col gap-2.5 select-none cursor-default w-full max-w-lg border transition shadow-lg';
     div.setAttribute('data-attachment-id', att.id);
     div.setAttribute('data-attachment-type', 'audio');
     div.setAttribute('contenteditable', 'false');
     div.setAttribute('draggable', 'true');
 
-    // Live frosted glass effect matching burger buttons
-    const bgStyle = isLight ? 'rgba(255, 255, 255, 0.72)' : 'rgba(28, 28, 30, 0.72)';
-    const borderStyle = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.12)';
+    // Theme palette-matched styling (inherits theme text/bg tone, avoiding cold blue tint)
+    const bgStyle = isLight ? hexToRgba(themeText, 0.04) : hexToRgba(themeText, 0.07);
+    const borderStyle = hexToRgba(themeText, isLight ? 0.08 : 0.14);
+    const buttonBg = hexToRgba(themeText, isLight ? 0.05 : 0.08);
+    const buttonBorder = hexToRgba(themeText, isLight ? 0.08 : 0.14);
 
     div.style.background = bgStyle;
     div.style.backdropFilter = 'blur(20px) saturate(180%)';
     div.style.borderColor = borderStyle;
     div.style.boxShadow = isLight
-      ? '0 6px 20px -4px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8)'
-      : '0 8px 24px -4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12)';
+      ? '0 6px 20px -4px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)'
+      : '0 8px 24px -4px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)';
     div.style.color = 'inherit';
     div.style.userSelect = 'none';
     div.style.lineHeight = 'normal';
     div.style.boxSizing = 'border-box';
-    div.style.height = '66px';
-    div.style.minHeight = '66px';
-    div.style.maxHeight = '66px';
+    div.style.height = 'auto';
+    div.style.minHeight = 'auto';
+    div.style.maxHeight = 'none';
 
-    const textColor = isLight ? '#000000' : '#FFFFFF';
+    const textColor = themeText;
     const accentTextColor = isLightColor(accentColor) ? '#000000' : '#FFFFFF';
-    const scrubberHtml = renderAndroidWavyScrubberSvg(0, accentColor, textColor, isLight);
+    const scrubberHtml = renderStraightScrubberSvg(0, accentColor, textColor, isLight);
 
     div.innerHTML = `
-      <button type="button" class="veris-audio-play-btn w-10.5 h-10.5 min-w-[42px] max-w-[42px] rounded-full flex items-center justify-center shrink-0 cursor-pointer shadow-md transition active:scale-95" style="background-color: ${accentColor}; color: ${accentTextColor};" title="Воспроизвести">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="translate-x-[1.5px]"><polygon points="7 4.5 19.5 12 7 19.5 7 4.5"/></svg>
-      </button>
-      <div class="flex-1 flex flex-col justify-center min-w-0 px-1 gap-0.5">
-        <div class="veris-audio-seekbar-container w-full h-7 flex items-center cursor-pointer select-none" title="Перемотка" draggable="false">
-          ${scrubberHtml}
-        </div>
-        <div class="w-full flex items-center justify-between text-[11px] font-mono select-none leading-none opacity-75">
-          <span class="veris-audio-time font-semibold font-mono tracking-tight">00:00</span>
-          <span class="truncate text-[10px] opacity-60 ml-2 max-w-[130px] sm:max-w-[200px]" title="${att.name}">${att.name}</span>
+      <div class="flex items-center gap-3 w-full">
+        <button type="button" class="veris-audio-play-btn w-11 h-11 min-w-[44px] max-w-[44px] rounded-full flex items-center justify-center shrink-0 cursor-pointer shadow-md transition active:scale-95" style="background-color: ${accentColor}; color: ${accentTextColor};" title="Воспроизвести">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 4 19 12 6 20 6 4"/></svg>
+        </button>
+        <div class="flex-1 flex flex-col justify-center min-w-0 px-0.5 gap-1">
+          <div class="veris-audio-seekbar-container w-full h-5 flex items-center cursor-pointer select-none" title="Перемотка" draggable="false">
+            ${scrubberHtml}
+          </div>
+          <div class="w-full flex items-center justify-between text-[11px] font-mono select-none leading-none opacity-80">
+            <span class="veris-audio-time font-semibold font-mono tracking-tight shrink-0">00:00</span>
+            <span class="truncate text-[10px] opacity-60 ml-2 max-w-[170px] sm:max-w-[240px]" title="${att.name}">${att.name}</span>
+          </div>
         </div>
       </div>
-      <button type="button" class="veris-audio-speed-btn w-9 h-7 min-w-[36px] max-w-[36px] min-h-[28px] max-h-[28px] p-0 rounded-xl text-[11px] font-mono font-bold transition active:scale-90 select-none shrink-0 cursor-pointer flex items-center justify-center border" data-speed="1" title="Скорость воспроизведения" style="background-color: ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)'}; color: ${textColor}; border-color: ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)'};">
-        1x
-      </button>
-      <button type="button" class="veris-audio-delete-btn w-8 h-8 min-w-[32px] max-w-[32px] p-0 rounded-xl text-red-400/85 hover:text-red-500 hover:bg-red-500/10 active:scale-90 transition shrink-0 cursor-pointer flex items-center justify-center" title="Удалить запись">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6h18"/>
-          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-          <line x1="10" x2="10" y1="11" y2="17"/>
-          <line x1="14" x2="14" y1="11" y2="17"/>
-        </svg>
-      </button>
+      <div class="flex items-center justify-between gap-2 w-full pt-1">
+        <button type="button" class="veris-audio-speed-btn w-9 h-7.5 min-w-[36px] max-w-[36px] min-h-[30px] max-h-[30px] p-0 rounded-xl text-[11px] font-mono font-bold leading-none transition active:scale-90 select-none shrink-0 cursor-pointer flex items-center justify-center text-center border" data-speed="1" title="Скорость воспроизведения" style="background-color: ${buttonBg}; color: ${textColor}; border-color: ${buttonBorder};">1x</button>
+        <div class="flex-1 flex items-center justify-center gap-2 max-w-[260px]">
+          <button type="button" class="veris-audio-rewind-btn flex-1 h-7.5 min-h-[30px] max-h-[30px] px-2 rounded-xl text-[11px] font-mono font-bold transition active:scale-95 select-none cursor-pointer flex items-center justify-center border" title="Назад 15 сек" style="background-color: ${buttonBg}; color: ${textColor}; border-color: ${buttonBorder};">
+            <span>-15</span>
+          </button>
+          <button type="button" class="veris-audio-forward-btn flex-1 h-7.5 min-h-[30px] max-h-[30px] px-2 rounded-xl text-[11px] font-mono font-bold transition active:scale-95 select-none cursor-pointer flex items-center justify-center border" title="Вперед 15 сек" style="background-color: ${buttonBg}; color: ${textColor}; border-color: ${buttonBorder};">
+            <span>+15</span>
+          </button>
+        </div>
+        <button type="button" class="veris-audio-delete-btn w-9 h-7.5 min-w-[36px] max-w-[36px] min-h-[30px] max-h-[30px] p-0 rounded-xl text-red-400 hover:text-red-500 active:scale-90 transition select-none shrink-0 cursor-pointer flex items-center justify-center border" title="Удалить запись" style="background-color: ${buttonBg}; border-color: ${buttonBorder};">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"/>
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            <line x1="10" x2="10" y1="11" y2="17"/>
+            <line x1="14" x2="14" y1="11" y2="17"/>
+          </svg>
+        </button>
+      </div>
     `;
 
     return div;
@@ -194,6 +193,7 @@ export const NoteEditor: React.FC = () => {
   const {
     activeNoteId,
     notes,
+    blocks,
     updateNote,
     addAttachmentToNote,
     deleteAttachmentFromNote,
@@ -203,17 +203,25 @@ export const NoteEditor: React.FC = () => {
     quickSettings,
     theme,
     language,
+    isFocusMode,
+    undoNoteContent,
+    redoNoteContent,
+    lastHistoryAction,
   } = useApp();
 
   const [selectedAttachment, setSelectedAttachment] = useState<NoteAttachment | null>(null);
   const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null);
   const [audioToDelete, setAudioToDelete] = useState<{ attId: string; embedEl: HTMLElement } | null>(null);
   const [readOnlyNoteId, setReadOnlyNoteId] = useState<string | null>(null);
+  const [activeBlockModalId, setActiveBlockModalId] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number; above: boolean } | null>(null);
   const [selectedMentionIndex, setSelectedMentionIndex] = useState<number>(0);
 
   const editorRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const lastActiveNoteIdRef = useRef<string | null>(null);
+  const noteScrollPositionsRef = useRef<Record<string, number>>({});
   const isKeyboardOpenRef = useRef<boolean>(false);
   const wasEditingBeforeSelectionRef = useRef<boolean>(false);
   const lastSavedRangeRef = useRef<Range | null>(null);
@@ -310,25 +318,164 @@ export const NoteEditor: React.FC = () => {
     setMentionQuery(null);
   }, []);
 
+  // Ensure caret line gently scrolls only if it reaches the top edge of the bottom menu
+  const ensureCaretAboveBottomMenu = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !editorRef.current) return;
+    const range = sel.getRangeAt(0);
+    if (
+      !editorRef.current.contains(range.commonAncestorContainer) &&
+      range.commonAncestorContainer !== editorRef.current
+    ) {
+      return;
+    }
+
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    let rect: DOMRect | null = null;
+    const clientRects = range.getClientRects();
+    if (clientRects.length > 0 && clientRects[0].height > 0) {
+      rect = clientRects[0];
+    } else {
+      const bound = range.getBoundingClientRect();
+      if (bound && bound.height > 0) {
+        rect = bound;
+      } else {
+        const el =
+          range.startContainer.nodeType === Node.ELEMENT_NODE
+            ? (range.startContainer as HTMLElement)
+            : range.startContainer.parentElement;
+        if (el) {
+          rect = el.getBoundingClientRect();
+        }
+      }
+    }
+
+    if (!rect || rect.height === 0) return;
+
+    // Find top boundary of the bottom pill
+    const dockPill =
+      document.getElementById('floating-dock-pill') ||
+      document.getElementById('floating-bottom-dock');
+
+    const dockTop = dockPill
+      ? dockPill.getBoundingClientRect().top
+      : (typeof window !== 'undefined' ? window.innerHeight - 70 : 600);
+
+    // Only scroll if the caret's bottom is within 10px of or colliding with the pill
+    const threshold = dockTop - 10;
+
+    if (rect.bottom > threshold) {
+      const diff = rect.bottom - threshold;
+      if (diff > 0 && diff < 100) {
+        scrollContainer.scrollTop += diff;
+      }
+    }
+  }, []);
+
   const handleEditorInput = useCallback(() => {
     if (editorRef.current && note) {
       updateNote(note.id, { content: editorRef.current.innerHTML });
     }
     checkMentionTrigger();
-  }, [note, updateNote, checkMentionTrigger]);
+    requestAnimationFrame(() => {
+      ensureCaretAboveBottomMenu();
+    });
+  }, [note, updateNote, checkMentionTrigger, ensureCaretAboveBottomMenu]);
 
-  // Matching notes list for @ mention
-  const matchingNotes = React.useMemo(() => {
+  // Mention items (both blocks and notes) for @ mention
+  type MentionItem =
+    | { kind: 'block'; item: NoteBlock }
+    | { kind: 'note'; item: any };
+
+  const mentionItems: MentionItem[] = React.useMemo(() => {
     if (mentionQuery === null) return [];
     const q = mentionQuery.toLowerCase().replace(/_/g, ' ').trim();
-    return notes.filter(n => {
-      if (n.id === activeNoteId) return false;
-      const title = (n.title || 'Без названия').toLowerCase();
-      const titleUnderscore = title.replace(/\s+/g, '_');
-      if (!q) return true;
-      return title.includes(q) || titleUnderscore.includes(q);
-    });
-  }, [notes, activeNoteId, mentionQuery]);
+
+    const matchedBlocks: MentionItem[] = (blocks || [])
+      .filter(b => {
+        const name = (b.name || '').toLowerCase();
+        const nameUnderscore = name.replace(/\s+/g, '_');
+        if (!q) return true;
+        return name.includes(q) || nameUnderscore.includes(q);
+      })
+      .map(b => ({ kind: 'block', item: b }));
+
+    const matchedNotes: MentionItem[] = notes
+      .filter(n => {
+        if (n.id === activeNoteId) return false;
+        const title = (n.title || 'Без названия').toLowerCase();
+        const titleUnderscore = title.replace(/\s+/g, '_');
+        if (!q) return true;
+        return title.includes(q) || titleUnderscore.includes(q);
+      })
+      .map(n => ({ kind: 'note', item: n }));
+
+    return [...matchedBlocks, ...matchedNotes];
+  }, [blocks, notes, activeNoteId, mentionQuery]);
+
+  // Insert chosen block mention as interactive link
+  const insertBlockMention = useCallback(
+    (targetBlock: NoteBlock) => {
+      const sel = window.getSelection();
+      if (!sel || !editorRef.current) return;
+
+      let range = sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+      if (!range && lastSavedRangeRef.current) {
+        range = lastSavedRangeRef.current;
+      }
+      if (!range) return;
+
+      const textNode = range.startContainer;
+      if (textNode.nodeType !== Node.TEXT_NODE) return;
+
+      const text = textNode.textContent || '';
+      const offset = range.startOffset;
+      const textBeforeCaret = text.slice(0, offset);
+      const lastAt = textBeforeCaret.lastIndexOf('@');
+      if (lastAt === -1) return;
+
+      const rawName = targetBlock.name?.trim() || 'Блок';
+      const safeName = rawName.replace(/\s+/g, '_');
+
+      const linkSpan = document.createElement('span');
+      linkSpan.className =
+        'veris-block-link font-semibold underline cursor-pointer px-0.5 mx-0.5 transition active:scale-95 inline-flex items-center gap-0.5 select-none';
+      linkSpan.setAttribute('data-block-id', targetBlock.id);
+      linkSpan.setAttribute('contenteditable', 'false');
+      linkSpan.style.color = theme.accent;
+      linkSpan.style.backgroundColor = 'transparent';
+      linkSpan.textContent = `@${safeName}`;
+
+      const beforeText = text.slice(0, lastAt);
+      const afterText = text.slice(offset);
+
+      textNode.textContent = beforeText;
+      const spaceNode = document.createTextNode('\u00A0' + afterText);
+
+      if (textNode.nextSibling) {
+        textNode.parentNode?.insertBefore(linkSpan, textNode.nextSibling);
+        textNode.parentNode?.insertBefore(spaceNode, linkSpan.nextSibling);
+      } else {
+        textNode.parentNode?.appendChild(linkSpan);
+        textNode.parentNode?.appendChild(spaceNode);
+      }
+
+      const newRange = document.createRange();
+      newRange.setStart(spaceNode, 1);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+      lastSavedRangeRef.current = newRange.cloneRange();
+
+      setMentionQuery(null);
+      if (editorRef.current && note) {
+        updateNote(note.id, { content: editorRef.current.innerHTML });
+      }
+    },
+    [theme.accent, note, updateNote]
+  );
 
   // Insert chosen note mention as interactive link
   const insertNoteMention = useCallback(
@@ -411,16 +558,16 @@ export const NoteEditor: React.FC = () => {
       }
       const seekbarContainer = embedEl.querySelector('.veris-audio-seekbar-container');
       if (seekbarContainer) {
-        seekbarContainer.innerHTML = renderAndroidWavyScrubberSvg(
+        seekbarContainer.innerHTML = renderStraightScrubberSvg(
           0,
           theme.accent,
-          isLight ? '#000000' : '#FFFFFF',
+          theme.text,
           isLight
         );
       }
       activeAudioRef.current = null;
     }
-  }, [theme.accent, isLight]);
+  }, [theme.accent, theme.text, isLight]);
 
   // Cleanup audio and search on note switch or unmount
   useEffect(() => {
@@ -448,161 +595,166 @@ export const NoteEditor: React.FC = () => {
     return `${String(mins).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  // Toggle voice message audio play / pause
-  const togglePlayAudio = useCallback((att: NoteAttachment, embedEl: HTMLElement) => {
-    const textColor = isLight ? '#000000' : '#FFFFFF';
-
-    if (activeAudioRef.current && activeAudioRef.current.attId === att.id) {
-      // If the embed element was replaced in the DOM during drag & drop, update its ref
-      if (activeAudioRef.current.embedEl !== embedEl) {
+  // Helper to initialize or reuse the active Audio instance without forced playback
+  const initAudioInstance = useCallback(
+    (att: NoteAttachment, embedEl: HTMLElement): HTMLAudioElement => {
+      if (activeAudioRef.current && activeAudioRef.current.attId === att.id) {
         activeAudioRef.current.embedEl = embedEl;
+        return activeAudioRef.current.audio;
       }
 
-      if (!activeAudioRef.current.audio.paused) {
-        activeAudioRef.current.audio.pause();
-        const playBtn = embedEl.querySelector('.veris-audio-play-btn');
+      stopCurrentAudio();
+
+      const audio = new Audio(att.dataUrl);
+      const speedBtn = embedEl.querySelector('.veris-audio-speed-btn') as HTMLElement | null;
+      const speed = speedBtn ? parseFloat(speedBtn.getAttribute('data-speed') || '1') : 1;
+      audio.playbackRate = speed;
+
+      const playBtn = embedEl.querySelector('.veris-audio-play-btn');
+      const timeEl = embedEl.querySelector('.veris-audio-time');
+      const seekbarContainer = embedEl.querySelector('.veris-audio-seekbar-container');
+      const textColor = theme.text;
+
+      audio.onloadedmetadata = () => {
+        if (timeEl && audio.duration) {
+          const current = audio.currentTime || 0;
+          timeEl.textContent = `${formatSecs(current)} / ${formatSecs(audio.duration)}`;
+        }
+      };
+
+      audio.ontimeupdate = () => {
+        if (!audio.duration) return;
+        if (isScrubbingRef.current && isScrubbingRef.current.att.id === att.id) return;
+
+        const progress = audio.currentTime / audio.duration;
+        if (timeEl) {
+          timeEl.textContent = `${formatSecs(audio.currentTime)} / ${formatSecs(audio.duration)}`;
+        }
+        if (seekbarContainer) {
+          seekbarContainer.innerHTML = renderStraightScrubberSvg(
+            progress,
+            theme.accent,
+            textColor,
+            isLight
+          );
+        }
+      };
+
+      audio.onended = () => {
         if (playBtn) {
           playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="translate-x-[1.5px]"><polygon points="7 4.5 19.5 12 7 19.5 7 4.5"/></svg>`;
         }
-        return;
+        if (timeEl && audio.duration) {
+          timeEl.textContent = `00:00 / ${formatSecs(audio.duration)}`;
+        }
+        if (seekbarContainer) {
+          seekbarContainer.innerHTML = renderStraightScrubberSvg(
+            0,
+            theme.accent,
+            textColor,
+            isLight
+          );
+        }
+        activeAudioRef.current = null;
+      };
+
+      activeAudioRef.current = { audio, attId: att.id, embedEl };
+      return audio;
+    },
+    [stopCurrentAudio, theme.accent, theme.text, isLight]
+  );
+
+  // Toggle voice message audio play / pause
+  const togglePlayAudio = useCallback(
+    (att: NoteAttachment, embedEl: HTMLElement) => {
+      const audio = initAudioInstance(att, embedEl);
+      const playBtn = embedEl.querySelector('.veris-audio-play-btn');
+
+      if (!audio.paused) {
+        audio.pause();
+        if (playBtn) {
+          playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="translate-x-[1.5px]"><polygon points="7 4.5 19.5 12 7 19.5 7 4.5"/></svg>`;
+        }
       } else {
         const speedBtn = embedEl.querySelector('.veris-audio-speed-btn') as HTMLElement | null;
         const speed = speedBtn ? parseFloat(speedBtn.getAttribute('data-speed') || '1') : 1;
-        activeAudioRef.current.audio.playbackRate = speed;
+        audio.playbackRate = speed;
 
-        activeAudioRef.current.audio.play().catch(() => {});
-        const playBtn = embedEl.querySelector('.veris-audio-play-btn');
-        if (playBtn) {
-          playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5.5" y="4" width="4" height="16" rx="1.5"/><rect x="14.5" y="4" width="4" height="16" rx="1.5"/></svg>`;
-        }
-        return;
+        audio
+          .play()
+          .then(() => {
+            if (playBtn) {
+              playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5.5" y="4" width="4" height="16" rx="1.5"/><rect x="14.5" y="4" width="4" height="16" rx="1.5"/></svg>`;
+            }
+          })
+          .catch(err => {
+            console.warn('Audio play error:', err);
+          });
       }
-    }
+    },
+    [initAudioInstance]
+  );
 
-    // Stop previous audio if any
-    stopCurrentAudio();
+  // Performs forward or rewind skip by N seconds with instant UI update (does NOT autoplay if paused)
+  const performAudioSkip = useCallback(
+    (att: NoteAttachment, embedEl: HTMLElement, direction: 'rewind' | 'forward', seconds: number) => {
+      const audio = initAudioInstance(att, embedEl);
+      const textColor = theme.text;
+      const seekbarEl = embedEl.querySelector('.veris-audio-seekbar-container') as HTMLElement | null;
+      const timeEl = embedEl.querySelector('.veris-audio-time');
 
-    const audio = new Audio(att.dataUrl);
-    const speedBtn = embedEl.querySelector('.veris-audio-speed-btn') as HTMLElement | null;
-    const speed = speedBtn ? parseFloat(speedBtn.getAttribute('data-speed') || '1') : 1;
-    audio.playbackRate = speed;
+      const dur = audio.duration || 0;
+      const delta = direction === 'rewind' ? -seconds : seconds;
+      const newTime = Math.max(0, Math.min(dur > 0 ? dur : 9999, (audio.currentTime || 0) + delta));
+      audio.currentTime = newTime;
 
-    const playBtn = embedEl.querySelector('.veris-audio-play-btn');
-    const timeEl = embedEl.querySelector('.veris-audio-time');
-    const seekbarContainer = embedEl.querySelector('.veris-audio-seekbar-container');
-
-    audio.onloadedmetadata = () => {
-      if (timeEl && audio.duration) {
-        timeEl.textContent = formatSecs(audio.duration);
+      if (timeEl && dur > 0) {
+        timeEl.textContent = `${formatSecs(newTime)} / ${formatSecs(dur)}`;
       }
-    };
+      if (seekbarEl && dur > 0) {
+        const progress = newTime / dur;
+        seekbarEl.innerHTML = renderStraightScrubberSvg(progress, theme.accent, textColor, isLight);
+      }
+    },
+    [initAudioInstance, theme.text, theme.accent, isLight]
+  );
 
-    audio.ontimeupdate = () => {
-      if (!audio.duration) return;
-      // Skip automatic ontimeupdate if user is currently dragging scrubber
-      if (isScrubbingRef.current && isScrubbingRef.current.att.id === att.id) return;
-
-      const progress = audio.currentTime / audio.duration;
-      if (timeEl) {
-        timeEl.textContent = `${formatSecs(audio.currentTime)} / ${formatSecs(audio.duration)}`;
-      }
-      if (seekbarContainer) {
-        seekbarContainer.innerHTML = renderAndroidWavyScrubberSvg(
-          progress,
-          theme.accent,
-          textColor,
-          isLight
-        );
-      }
-    };
-
-    audio.onended = () => {
-      if (playBtn) {
-        playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="translate-x-[1.5px]"><polygon points="7 4.5 19.5 12 7 19.5 7 4.5"/></svg>`;
-      }
-      if (timeEl && audio.duration) {
-        timeEl.textContent = formatSecs(audio.duration);
-      }
-      if (seekbarContainer) {
-        seekbarContainer.innerHTML = renderAndroidWavyScrubberSvg(
-          0,
-          theme.accent,
-          textColor,
-          isLight
-        );
-      }
-      activeAudioRef.current = null;
-    };
-
-    audio.play().then(() => {
-      if (playBtn) {
-        playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5.5" y="4" width="4" height="16" rx="1.5"/><rect x="14.5" y="4" width="4" height="16" rx="1.5"/></svg>`;
-      }
-      activeAudioRef.current = { audio, attId: att.id, embedEl };
-    }).catch(err => {
-      console.warn('Audio play error:', err);
-    });
-  }, [stopCurrentAudio, theme.accent, isLight]);
-
-  // Scrubber seek handler (works with click & drag across the entire width)
+  // Scrubber seek handler (works with click & drag across the entire width, does NOT autoplay if paused)
   const seekAudioScrubber = (att: NoteAttachment, embedEl: HTMLElement, clientX: number) => {
     const seekbarEl = embedEl.querySelector('.veris-audio-seekbar-container') as HTMLElement;
     if (!seekbarEl) return;
     const rect = seekbarEl.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const textColor = isLight ? '#000000' : '#FFFFFF';
+    const textColor = theme.text;
 
-    if (activeAudioRef.current && activeAudioRef.current.attId === att.id) {
-      const audio = activeAudioRef.current.audio;
-      if (audio.duration) {
-        audio.currentTime = ratio * audio.duration;
-        const timeEl = embedEl.querySelector('.veris-audio-time');
-        if (timeEl) {
-          timeEl.textContent = `${formatSecs(audio.currentTime)} / ${formatSecs(audio.duration)}`;
-        }
-        seekbarEl.innerHTML = renderAndroidWavyScrubberSvg(
-          ratio,
-          theme.accent,
-          textColor,
-          isLight
-        );
-        if (audio.paused) {
-          audio.play().catch(() => {});
-          const playBtn = embedEl.querySelector('.veris-audio-play-btn');
-          if (playBtn) {
-            playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5.5" y="4" width="4" height="16" rx="1.5"/><rect x="14.5" y="4" width="4" height="16" rx="1.5"/></svg>`;
-          }
-        }
+    const audio = initAudioInstance(att, embedEl);
+
+    if (audio.duration && !isNaN(audio.duration)) {
+      audio.currentTime = ratio * audio.duration;
+      const timeEl = embedEl.querySelector('.veris-audio-time');
+      if (timeEl) {
+        timeEl.textContent = `${formatSecs(audio.currentTime)} / ${formatSecs(audio.duration)}`;
       }
-    } else {
-      togglePlayAudio(att, embedEl);
-      setTimeout(() => {
-        if (activeAudioRef.current && activeAudioRef.current.attId === att.id) {
-          const audio = activeAudioRef.current.audio;
-          if (audio.duration) {
-            audio.currentTime = ratio * audio.duration;
-            seekbarEl.innerHTML = renderAndroidWavyScrubberSvg(
-              ratio,
-              theme.accent,
-              textColor,
-              isLight
-            );
-          }
-        }
-      }, 60);
     }
+
+    seekbarEl.innerHTML = renderStraightScrubberSvg(
+      ratio,
+      theme.accent,
+      textColor,
+      isLight
+    );
   };
 
-  // Global pointer listeners for smooth scrubber drag across the window
+  // Global pointer listeners for smooth scrubber drag
   useEffect(() => {
     const handleGlobalPointerMove = (e: PointerEvent) => {
       if (!isScrubbingRef.current) return;
       const { att, embedEl, seekbarEl } = isScrubbingRef.current;
       const rect = seekbarEl.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const textColor = isLight ? '#000000' : '#FFFFFF';
+      const textColor = theme.text;
 
-      seekbarEl.innerHTML = renderAndroidWavyScrubberSvg(
+      seekbarEl.innerHTML = renderStraightScrubberSvg(
         ratio,
         theme.accent,
         textColor,
@@ -648,7 +800,7 @@ export const NoteEditor: React.FC = () => {
       window.removeEventListener('pointerup', handleGlobalPointerUp);
       window.removeEventListener('pointercancel', handleGlobalPointerUp);
     };
-  }, [isLight, theme.accent]);
+  }, [isLight, theme.accent, theme.text]);
 
   // Clean up any remaining touch ghost elements on unmount or cancel
   const cleanupGhost = useCallback(() => {
@@ -687,11 +839,16 @@ export const NoteEditor: React.FC = () => {
     };
   }, []);
 
-  // Decorate any existing attachment embeds inside editorRef to make them non-editable, draggable, and ensure Android wavy player
+  // Decorate any existing attachment embeds inside editorRef to ensure theme consistency and single-row controls
   const decorateExistingEmbeds = useCallback(() => {
     if (!editorRef.current) return;
     const embeds = editorRef.current.querySelectorAll('[data-attachment-id]');
-    const textColor = isLight ? '#000000' : '#FFFFFF';
+    const textColor = theme.text;
+    const bgStyle = isLight ? hexToRgba(theme.text, 0.04) : hexToRgba(theme.text, 0.07);
+    const borderStyle = hexToRgba(theme.text, isLight ? 0.08 : 0.14);
+    const buttonBg = hexToRgba(theme.text, isLight ? 0.05 : 0.08);
+    const buttonBorder = hexToRgba(theme.text, isLight ? 0.08 : 0.14);
+    const accentTextColor = isLightColor(theme.accent) ? '#000000' : '#FFFFFF';
 
     embeds.forEach(el => {
       el.setAttribute('contenteditable', 'false');
@@ -701,79 +858,119 @@ export const NoteEditor: React.FC = () => {
       // Upgrade existing audio embeds
       if (el.classList.contains('veris-audio-embed')) {
         const audioEl = el as HTMLElement;
-        audioEl.style.height = '66px';
-        audioEl.style.minHeight = '66px';
-        audioEl.style.maxHeight = '66px';
+        audioEl.style.height = 'auto';
+        audioEl.style.minHeight = 'auto';
+        audioEl.style.maxHeight = 'none';
         audioEl.style.lineHeight = 'normal';
         audioEl.style.boxSizing = 'border-box';
-        audioEl.style.padding = '8px 12px';
+        audioEl.style.padding = '14px';
 
-        // Live frosted glass effect matching burger buttons
-        const bgStyle = isLight ? 'rgba(255, 255, 255, 0.72)' : 'rgba(28, 28, 30, 0.72)';
-        const borderStyle = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.12)';
+        // Apply theme-derived styles
         audioEl.style.background = bgStyle;
         audioEl.style.backdropFilter = 'blur(20px) saturate(180%)';
         audioEl.style.borderColor = borderStyle;
         audioEl.style.boxShadow = isLight
-          ? '0 6px 20px -4px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8)'
-          : '0 8px 24px -4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12)';
+          ? '0 6px 20px -4px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)'
+          : '0 8px 24px -4px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)';
 
-        const oldWaveform = audioEl.querySelector('.veris-audio-waveform');
-        if (oldWaveform) {
-          const newSeekbar = document.createElement('div');
-          newSeekbar.className =
-            'veris-audio-seekbar-container w-full h-7 flex items-center cursor-pointer select-none';
-          newSeekbar.title = 'Перемотка';
-          newSeekbar.setAttribute('draggable', 'false');
-          newSeekbar.innerHTML = renderAndroidWavyScrubberSvg(0, theme.accent, textColor, isLight);
-          oldWaveform.parentNode?.replaceChild(newSeekbar, oldWaveform);
+        const attId = audioEl.getAttribute('data-attachment-id');
+        const att = note?.attachments?.find(a => a.id === attId);
+        const attName = att ? att.name : 'Аудиозапись';
+
+        // If the audio embed contains the old border-t separator or is missing the new structure, regenerate it
+        const hasOldSeparator = !!audioEl.querySelector('.border-t');
+        const hasDeleteInBottomRow = !!audioEl.querySelector('.veris-audio-delete-btn');
+        const needsRebuild = hasOldSeparator || !hasDeleteInBottomRow || !audioEl.querySelector('.veris-audio-rewind-btn');
+
+        if (needsRebuild) {
+          const scrubberHtml = renderStraightScrubberSvg(0, theme.accent, textColor, isLight);
+          audioEl.className =
+            'veris-audio-embed my-3 p-3.5 rounded-2xl flex flex-col gap-2.5 select-none cursor-default w-full max-w-lg border transition shadow-lg';
+          audioEl.innerHTML = `
+            <div class="flex items-center gap-3 w-full">
+              <button type="button" class="veris-audio-play-btn w-11 h-11 min-w-[44px] max-w-[44px] rounded-full flex items-center justify-center shrink-0 cursor-pointer shadow-md transition active:scale-95" style="background-color: ${theme.accent}; color: ${accentTextColor};" title="Воспроизвести">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 4 19 12 6 20 6 4"/></svg>
+              </button>
+              <div class="flex-1 flex flex-col justify-center min-w-0 px-0.5 gap-1">
+                <div class="veris-audio-seekbar-container w-full h-5 flex items-center cursor-pointer select-none" title="Перемотка" draggable="false">
+                  ${scrubberHtml}
+                </div>
+                <div class="w-full flex items-center justify-between text-[11px] font-mono select-none leading-none opacity-80">
+                  <span class="veris-audio-time font-semibold font-mono tracking-tight shrink-0">00:00</span>
+                  <span class="truncate text-[10px] opacity-60 ml-2 max-w-[170px] sm:max-w-[240px]" title="${attName}">${attName}</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-2 w-full pt-1">
+              <button type="button" class="veris-audio-speed-btn w-9 h-7.5 min-w-[36px] max-w-[36px] min-h-[30px] max-h-[30px] p-0 rounded-xl text-[11px] font-mono font-bold leading-none transition active:scale-90 select-none shrink-0 cursor-pointer flex items-center justify-center text-center border" data-speed="1" title="Скорость воспроизведения" style="background-color: ${buttonBg}; color: ${textColor}; border-color: ${buttonBorder};">1x</button>
+              <div class="flex-1 flex items-center justify-center gap-2 max-w-[260px]">
+                <button type="button" class="veris-audio-rewind-btn flex-1 h-7.5 min-h-[30px] max-h-[30px] px-2 rounded-xl text-[11px] font-mono font-bold transition active:scale-95 select-none cursor-pointer flex items-center justify-center border" title="Назад 15 сек" style="background-color: ${buttonBg}; color: ${textColor}; border-color: ${buttonBorder};">
+                  <span>-15</span>
+                </button>
+                <button type="button" class="veris-audio-forward-btn flex-1 h-7.5 min-h-[30px] max-h-[30px] px-2 rounded-xl text-[11px] font-mono font-bold transition active:scale-95 select-none cursor-pointer flex items-center justify-center border" title="Вперед 15 сек" style="background-color: ${buttonBg}; color: ${textColor}; border-color: ${buttonBorder};">
+                  <span>+15</span>
+                </button>
+              </div>
+              <button type="button" class="veris-audio-delete-btn w-9 h-7.5 min-w-[36px] max-w-[36px] min-h-[30px] max-h-[30px] p-0 rounded-xl text-red-400 hover:text-red-500 active:scale-90 transition select-none shrink-0 cursor-pointer flex items-center justify-center border" title="Удалить запись" style="background-color: ${buttonBg}; border-color: ${buttonBorder};">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18"/>
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                  <line x1="10" x2="10" y1="11" y2="17"/>
+                  <line x1="14" x2="14" y1="11" y2="17"/>
+                </svg>
+              </button>
+            </div>
+          `;
         } else {
-          const seekbar = audioEl.querySelector('.veris-audio-seekbar-container');
-          if (seekbar) {
-            seekbar.setAttribute('draggable', 'false');
-            seekbar.className =
-              'veris-audio-seekbar-container w-full h-7 flex items-center cursor-pointer select-none';
+          // Update colors on existing elements to match active theme palette
+          const playBtn = audioEl.querySelector('.veris-audio-play-btn') as HTMLElement | null;
+          if (playBtn) {
+            playBtn.style.backgroundColor = theme.accent;
+            playBtn.style.color = isLightColor(theme.accent) ? '#000000' : '#FFFFFF';
+            // Also ensure play SVG is centered
+            const playSvg = playBtn.querySelector('svg');
+            if (playSvg) {
+              playSvg.setAttribute('class', '');
+              playSvg.innerHTML = '<polygon points="6 4 19 12 6 20 6 4"/>';
+            }
           }
-        }
-
-        // Ensure speed button is present with exact fixed dimensions
-        let speedBtn = audioEl.querySelector('.veris-audio-speed-btn') as HTMLButtonElement | null;
-        if (!speedBtn) {
-          const deleteBtn = audioEl.querySelector('.veris-audio-delete-btn');
-          const newBtn = document.createElement('button');
-          newBtn.type = 'button';
-          newBtn.className =
-            'veris-audio-speed-btn w-9 h-7 min-w-[36px] max-w-[36px] min-h-[28px] max-h-[28px] p-0 rounded-xl text-[11px] font-mono font-bold transition active:scale-90 select-none shrink-0 cursor-pointer flex items-center justify-center border';
-          newBtn.setAttribute('data-speed', '1');
-          newBtn.title = 'Скорость воспроизведения';
-          newBtn.style.backgroundColor = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
-          newBtn.style.color = textColor;
-          newBtn.style.borderColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)';
-          newBtn.textContent = '1x';
-          if (deleteBtn) {
-            audioEl.insertBefore(newBtn, deleteBtn);
-          } else {
-            audioEl.appendChild(newBtn);
+          const thumb = audioEl.querySelector('.veris-audio-thumb') as SVGElement | null;
+          if (thumb) {
+            thumb.setAttribute('fill', theme.accent);
           }
-        } else {
-          speedBtn.className =
-            'veris-audio-speed-btn w-9 h-7 min-w-[36px] max-w-[36px] min-h-[28px] max-h-[28px] p-0 rounded-xl text-[11px] font-mono font-bold transition active:scale-90 select-none shrink-0 cursor-pointer flex items-center justify-center border';
-        }
-
-        // Ensure delete button has proper compact edge styling
-        const deleteBtn = audioEl.querySelector('.veris-audio-delete-btn') as HTMLElement | null;
-        if (deleteBtn) {
-          deleteBtn.className =
-            'veris-audio-delete-btn w-8 h-8 min-w-[32px] max-w-[32px] p-0 rounded-xl text-red-400/85 hover:text-red-500 hover:bg-red-500/10 active:scale-90 transition shrink-0 cursor-pointer flex items-center justify-center';
-        }
-
-        // Ensure play button icon is centered
-        const playBtn = audioEl.querySelector('.veris-audio-play-btn') as HTMLElement | null;
-        if (playBtn) {
-          playBtn.className =
-            'veris-audio-play-btn w-10.5 h-10.5 min-w-[42px] max-w-[42px] rounded-full flex items-center justify-center shrink-0 cursor-pointer shadow-md transition active:scale-95';
-          if (!playBtn.querySelector('polygon[points*="19.5"]') && !playBtn.querySelector('rect')) {
-            playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="translate-x-[1.5px]"><polygon points="7 4.5 19.5 12 7 19.5 7 4.5"/></svg>`;
+          const speedBtn = audioEl.querySelector('.veris-audio-speed-btn') as HTMLButtonElement | null;
+          if (speedBtn) {
+            const speedVal = speedBtn.getAttribute('data-speed') || '1';
+            speedBtn.textContent = `${speedVal}x`;
+            if (parseFloat(speedVal) > 1) {
+              speedBtn.style.backgroundColor = theme.accent;
+              speedBtn.style.color = isLightColor(theme.accent) ? '#000000' : '#FFFFFF';
+              speedBtn.style.borderColor = theme.accent;
+            } else {
+              speedBtn.style.backgroundColor = buttonBg;
+              speedBtn.style.color = textColor;
+              speedBtn.style.borderColor = buttonBorder;
+            }
+          }
+          const delBtn = audioEl.querySelector('.veris-audio-delete-btn') as HTMLElement | null;
+          if (delBtn) {
+            delBtn.style.backgroundColor = buttonBg;
+            delBtn.style.borderColor = buttonBorder;
+          }
+          const rewBtn = audioEl.querySelector('.veris-audio-rewind-btn') as HTMLElement | null;
+          if (rewBtn) {
+            rewBtn.style.backgroundColor = buttonBg;
+            rewBtn.style.color = textColor;
+            rewBtn.style.borderColor = buttonBorder;
+            rewBtn.innerHTML = '<span>-15</span>';
+          }
+          const fwdBtn = audioEl.querySelector('.veris-audio-forward-btn') as HTMLElement | null;
+          if (fwdBtn) {
+            fwdBtn.style.backgroundColor = buttonBg;
+            fwdBtn.style.color = textColor;
+            fwdBtn.style.borderColor = buttonBorder;
+            fwdBtn.innerHTML = '<span>+15</span>';
           }
         }
       }
@@ -787,17 +984,215 @@ export const NoteEditor: React.FC = () => {
       (el as HTMLElement).style.color = theme.accent;
       (el as HTMLElement).style.backgroundColor = 'transparent';
     });
+
+    // Decorate existing block links
+    const blockLinks = editorRef.current.querySelectorAll('.veris-block-link, [data-block-id]');
+    blockLinks.forEach(el => {
+      el.setAttribute('contenteditable', 'false');
+      (el as HTMLElement).style.cursor = 'pointer';
+      (el as HTMLElement).style.color = theme.accent;
+      (el as HTMLElement).style.backgroundColor = 'transparent';
+    });
   }, [theme.accent, isLight]);
 
-  // Sync editor content on active note change or undo/redo
+  // Sync editor content on active note change or undo/redo, preserving scroll position and caret
   useEffect(() => {
-    if (editorRef.current && note) {
-      if (editorRef.current.innerHTML !== (note.content || '')) {
-        editorRef.current.innerHTML = note.content || '';
-        decorateExistingEmbeds();
+    if (!editorRef.current || !note) return;
+
+    const isSameNote = lastActiveNoteIdRef.current === note.id;
+    lastActiveNoteIdRef.current = note.id;
+
+    if (editorRef.current.innerHTML !== (note.content || '')) {
+      const savedScrollTop = isSameNote && scrollContainerRef.current
+        ? scrollContainerRef.current.scrollTop
+        : (noteScrollPositionsRef.current[note.id] ?? 0);
+
+      // Check if editor or keyboard was active before content swap
+      const wasKeyboardOrEditorActive =
+        isKeyboardOpenRef.current ||
+        wasEditingBeforeSelectionRef.current ||
+        document.activeElement === editorRef.current ||
+        Boolean(editorRef.current.contains(document.activeElement)) ||
+        (typeof window !== 'undefined' &&
+          window.visualViewport &&
+          window.innerHeight - window.visualViewport.height > 150);
+
+      const oldHtml = editorRef.current.innerHTML;
+      const newHtml = note.content || '';
+
+      // Compute divergence / diff location between oldHtml and newHtml
+      let prefix = 0;
+      const minLen = Math.min(oldHtml.length, newHtml.length);
+      while (prefix < minLen && oldHtml[prefix] === newHtml[prefix]) {
+        prefix++;
+      }
+
+      let suffix = 0;
+      while (
+        suffix < (minLen - prefix) &&
+        oldHtml[oldHtml.length - 1 - suffix] === newHtml[newHtml.length - 1 - suffix]
+      ) {
+        suffix++;
+      }
+
+      // In newHtml, identify target index for the undone action
+      let targetHtmlIndex = Math.max(prefix, newHtml.length - suffix);
+
+      // If targetHtmlIndex lands inside an HTML tag, advance past the tag
+      const lastOpenTag = newHtml.lastIndexOf('<', targetHtmlIndex);
+      const lastCloseTag = newHtml.lastIndexOf('>', targetHtmlIndex);
+      if (lastOpenTag > lastCloseTag && lastOpenTag !== -1) {
+        const nextClose = newHtml.indexOf('>', targetHtmlIndex);
+        if (nextClose !== -1) {
+          targetHtmlIndex = nextClose + 1;
+        }
+      }
+
+      // Compute plain text offset (non-tag characters) up to targetHtmlIndex
+      let plainTextOffset = 0;
+      let inTag = false;
+      for (let i = 0; i < Math.min(targetHtmlIndex, newHtml.length); i++) {
+        const ch = newHtml[i];
+        if (ch === '<') inTag = true;
+        else if (ch === '>') inTag = false;
+        else if (!inTag) plainTextOffset++;
+      }
+
+      // Apply new HTML to editor DOM
+      editorRef.current.innerHTML = newHtml;
+      decorateExistingEmbeds();
+
+      // Locate target node and range at plainTextOffset
+      const walker = document.createTreeWalker(
+        editorRef.current,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+
+      let accOffset = 0;
+      let targetNode: Node | null = null;
+      let offsetInNode = 0;
+      let lastTextNode: Node | null = null;
+
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        lastTextNode = node;
+        const len = node.textContent?.length || 0;
+        if (accOffset + len >= plainTextOffset) {
+          targetNode = node;
+          offsetInNode = Math.max(0, Math.min(len, plainTextOffset - accOffset));
+          break;
+        }
+        accOffset += len;
+      }
+
+      if (!targetNode && lastTextNode) {
+        targetNode = lastTextNode;
+        offsetInNode = lastTextNode.textContent?.length || 0;
+      }
+
+      let targetRange: Range | null = null;
+      let changeRect: DOMRect | null = null;
+
+      if (targetNode) {
+        try {
+          targetRange = document.createRange();
+          targetRange.setStart(targetNode, offsetInNode);
+          targetRange.setEnd(targetNode, offsetInNode);
+
+          const clientRects = targetRange.getClientRects();
+          if (clientRects.length > 0) {
+            changeRect = clientRects[0];
+          } else if (targetNode.parentElement) {
+            changeRect = targetNode.parentElement.getBoundingClientRect();
+          }
+        } catch (err) {
+          console.warn('Target range error:', err);
+        }
+      } else if (editorRef.current) {
+        changeRect = editorRef.current.getBoundingClientRect();
+      }
+
+      // If keyboard was open or editor was focused, maintain focus & place cursor right at the undone action
+      if (wasKeyboardOrEditorActive) {
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          if (targetRange) {
+            sel.addRange(targetRange);
+            lastSavedRangeRef.current = targetRange.cloneRange();
+          } else if (editorRef.current) {
+            const fallbackRange = document.createRange();
+            fallbackRange.selectNodeContents(editorRef.current);
+            fallbackRange.collapse(false);
+            sel.addRange(fallbackRange);
+            lastSavedRangeRef.current = fallbackRange.cloneRange();
+          }
+        }
+
+        editorRef.current.focus({ preventScroll: true });
+        wasEditingBeforeSelectionRef.current = true;
+      } else if (targetRange) {
+        lastSavedRangeRef.current = targetRange.cloneRange();
+      }
+
+      // Check visibility & handle scroll position
+      const scrollContainer = scrollContainerRef.current;
+      if (scrollContainer) {
+        if (isSameNote && changeRect) {
+          const containerRect = scrollContainer.getBoundingClientRect();
+          // Threshold margins: 30px from top, 70px from bottom (accounting for floating dock/keyboard)
+          const visibleTopThreshold = containerRect.top + 30;
+          const visibleBottomThreshold = containerRect.bottom - 70;
+
+          const isInVisibleViewport =
+            changeRect.top >= visibleTopThreshold &&
+            changeRect.bottom <= visibleBottomThreshold;
+
+          if (isInVisibleViewport) {
+            // Revert is in visible part: DO NOT SCROLL, keep current view stationary
+            scrollContainer.scrollTop = savedScrollTop;
+            requestAnimationFrame(() => {
+              if (scrollContainer) {
+                scrollContainer.scrollTop = savedScrollTop;
+              }
+            });
+          } else {
+            // Revert is outside visible screen: scroll smoothly to where the revert occurred
+            const currentScrollTop = scrollContainer.scrollTop;
+            const rectRelTop = changeRect.top - containerRect.top;
+            const targetScrollTop = Math.max(
+              0,
+              currentScrollTop + rectRelTop - Math.max(80, scrollContainer.clientHeight / 3)
+            );
+
+            scrollContainer.scrollTo({
+              top: targetScrollTop,
+              behavior: 'smooth',
+            });
+          }
+        } else if (savedScrollTop > 0) {
+          scrollContainer.scrollTop = savedScrollTop;
+          requestAnimationFrame(() => {
+            if (scrollContainer) {
+              scrollContainer.scrollTop = savedScrollTop;
+            }
+          });
+        }
+      }
+    } else if (!isSameNote && scrollContainerRef.current) {
+      // Switching back to an existing note: restore its scroll position
+      const savedScrollTop = noteScrollPositionsRef.current[note.id] ?? 0;
+      if (savedScrollTop > 0) {
+        scrollContainerRef.current.scrollTop = savedScrollTop;
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = savedScrollTop;
+          }
+        });
       }
     }
-  }, [activeNoteId, note?.content, decorateExistingEmbeds]);
+  }, [activeNoteId, note?.content, decorateExistingEmbeds, lastHistoryAction]);
 
   // Sync selection change to track last known caret position inside editor
   useEffect(() => {
@@ -829,7 +1224,7 @@ export const NoteEditor: React.FC = () => {
       const existing = editorRef.current.querySelectorAll(`[data-attachment-id="${att.id}"]`);
       existing.forEach(el => el.remove());
 
-      const newEmbed = createAttachmentEmbedDom(att, isLight, theme.accent);
+      const newEmbed = createAttachmentEmbedDom(att, isLight, theme.accent, theme.bg, theme.text);
       const spaceNode = document.createTextNode('\u00A0');
 
       let inserted = false;
@@ -969,9 +1364,9 @@ export const NoteEditor: React.FC = () => {
     };
   }, [note, updateNote, handleEditorInput]);
 
-  // Monitor text selection in editor for floating formatting toolbar
+  // Monitor text selection in editor for floating formatting toolbar with real-time scroll sync
   useEffect(() => {
-    const handleSelection = () => {
+    const updateSelection = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || !editorRef.current) {
         setSelectionRect(null);
@@ -986,29 +1381,63 @@ export const NoteEditor: React.FC = () => {
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
-        setSelectionRect(rect);
-
-        const isKeyboardCurrentlyOpen =
-          isKeyboardOpenRef.current ||
-          (typeof window !== 'undefined' &&
-            window.visualViewport &&
-            window.innerHeight - window.visualViewport.height > 150);
-
-        if (!isKeyboardCurrentlyOpen && !wasEditingBeforeSelectionRef.current) {
-          if (
-            document.activeElement instanceof HTMLElement &&
-            document.activeElement === editorRef.current
-          ) {
-            document.activeElement.blur();
-          }
+        // If selection has scrolled completely outside of visible area (above header or off bottom)
+        if (rect.bottom < 70 || rect.top > window.innerHeight - 15) {
+          setSelectionRect(null);
+          return;
         }
+        setSelectionRect(rect);
       } else {
         setSelectionRect(null);
       }
     };
 
-    document.addEventListener('selectionchange', handleSelection);
-    return () => document.removeEventListener('selectionchange', handleSelection);
+    const handleSelectionChange = () => {
+      updateSelection();
+
+      const isKeyboardCurrentlyOpen =
+        isKeyboardOpenRef.current ||
+        (typeof window !== 'undefined' &&
+          window.visualViewport &&
+          window.innerHeight - window.visualViewport.height > 150);
+
+      if (!isKeyboardCurrentlyOpen && !wasEditingBeforeSelectionRef.current) {
+        if (
+          document.activeElement instanceof HTMLElement &&
+          document.activeElement === editorRef.current
+        ) {
+          document.activeElement.blur();
+        }
+      }
+    };
+
+    let scrollRafId: number | null = null;
+    const handleScrollOrResize = () => {
+      if (scrollRafId !== null) cancelAnimationFrame(scrollRafId);
+      scrollRafId = requestAnimationFrame(() => {
+        updateSelection();
+        scrollRafId = null;
+      });
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    window.addEventListener('resize', handleScrollOrResize, { passive: true });
+    window.addEventListener('scroll', handleScrollOrResize, { passive: true });
+
+    const scrollContainer = scrollContainerRef.current;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScrollOrResize, { passive: true });
+    }
+
+    return () => {
+      if (scrollRafId !== null) cancelAnimationFrame(scrollRafId);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize);
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', handleScrollOrResize);
+      }
+    };
   }, []);
 
   if (!note) {
@@ -1040,21 +1469,44 @@ export const NoteEditor: React.FC = () => {
 
   // Enforce enter newline and formatting reset, and handle mention navigation
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Intercept undo/redo keyboard shortcuts
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        redoNoteContent();
+      } else {
+        undoNoteContent();
+      }
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      redoNoteContent();
+      return;
+    }
+
     // Intercept keyboard navigation if mention menu is visible
-    if (mentionQuery !== null && matchingNotes.length > 0) {
+    if (mentionQuery !== null && mentionItems.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedMentionIndex(i => (i + 1) % matchingNotes.length);
+        setSelectedMentionIndex(i => (i + 1) % mentionItems.length);
         return;
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedMentionIndex(i => (i - 1 + matchingNotes.length) % matchingNotes.length);
+        setSelectedMentionIndex(i => (i - 1 + mentionItems.length) % mentionItems.length);
         return;
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insertNoteMention(matchingNotes[selectedMentionIndex]);
+        const selected = mentionItems[selectedMentionIndex];
+        if (selected) {
+          if (selected.kind === 'block') {
+            insertBlockMention(selected.item);
+          } else {
+            insertNoteMention(selected.item);
+          }
+        }
         return;
       }
       if (e.key === 'Escape') {
@@ -1072,7 +1524,7 @@ export const NoteEditor: React.FC = () => {
           let node: Node | null = sel.anchorNode;
           if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
           const el = node as HTMLElement | null;
-          if (el && el.closest('blockquote, pre, h1, h2, h3, h4')) {
+          if (el && el.closest('pre, h1, h2, h3, h4')) {
             document.execCommand('formatBlock', false, '<p>');
           }
         }
@@ -1239,7 +1691,7 @@ export const NoteEditor: React.FC = () => {
     }
 
     // Build the rich interactive attachment widget
-    const newEmbed = createAttachmentEmbedDom(att, isLight, theme.accent);
+    const newEmbed = createAttachmentEmbedDom(att, isLight, theme.accent, theme.bg, theme.text);
     const spaceNode = document.createTextNode('\u00A0');
 
     if (range && editorRef.current.contains(range.startContainer)) {
@@ -1274,27 +1726,53 @@ export const NoteEditor: React.FC = () => {
     draggedFromEditorNodeRef.current = null;
   };
 
-  // Pointer down on seekbar inside editor to initiate dragging
+  // Pointer down on seekbar or control buttons inside editor
   const handleEditorPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    const seekbarEl = target.closest('.veris-audio-seekbar-container') as HTMLElement | null;
-    if (!seekbarEl) return;
 
     const embed = target.closest('[data-attachment-id]') as HTMLElement | null;
     if (!embed) return;
 
     const attId = embed.getAttribute('data-attachment-id');
-    const att = note.attachments?.find(a => a.id === attId);
+    const att = note?.attachments?.find(a => a.id === attId);
     if (!att) return;
 
-    e.stopPropagation();
-    isScrubbingRef.current = { att, embedEl: embed, seekbarEl };
-    seekAudioScrubber(att, embed, e.clientX);
+    // Prevent drag from buttons
+    if (
+      target.closest('.veris-audio-rewind-btn') ||
+      target.closest('.veris-audio-forward-btn') ||
+      target.closest('.veris-audio-play-btn') ||
+      target.closest('.veris-audio-delete-btn') ||
+      target.closest('.veris-audio-speed-btn')
+    ) {
+      e.stopPropagation();
+      return;
+    }
+
+    // Check if clicked seekbar to initiate dragging
+    const seekbarEl = target.closest('.veris-audio-seekbar-container') as HTMLElement | null;
+    if (seekbarEl) {
+      e.stopPropagation();
+      isScrubbingRef.current = { att, embedEl: embed, seekbarEl };
+      seekAudioScrubber(att, embed, e.clientX);
+    }
   };
 
   // 4. Click handling inside editor: note links, audio play/speed/delete/seek, or regular attachment preview
   const handleEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // Check if clicked a block link
+    const blockLink = target.closest('[data-block-id], .veris-block-link') as HTMLElement | null;
+    if (blockLink) {
+      const linkedBlockId = blockLink.getAttribute('data-block-id');
+      if (linkedBlockId) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveBlockModalId(linkedBlockId);
+        return;
+      }
+    }
 
     // Check if clicked a note link
     const noteLink = target.closest('[data-note-id], .veris-note-link') as HTMLElement | null;
@@ -1312,8 +1790,24 @@ export const NoteEditor: React.FC = () => {
     if (!embed) return;
 
     const attId = embed.getAttribute('data-attachment-id');
-    const att = note.attachments?.find(a => a.id === attId);
+    const att = note?.attachments?.find(a => a.id === attId);
     if (!att) return;
+
+    // Check if clicked rewind button
+    if (target.closest('.veris-audio-rewind-btn')) {
+      e.preventDefault();
+      e.stopPropagation();
+      performAudioSkip(att, embed, 'rewind', 15);
+      return;
+    }
+
+    // Check if clicked forward button
+    if (target.closest('.veris-audio-forward-btn')) {
+      e.preventDefault();
+      e.stopPropagation();
+      performAudioSkip(att, embed, 'forward', 15);
+      return;
+    }
 
     // Check if clicked delete button on voice message
     if (target.closest('.veris-audio-delete-btn')) {
@@ -1340,16 +1834,18 @@ export const NoteEditor: React.FC = () => {
       const nextSpeed = currentSpeed === 1 ? 1.5 : currentSpeed === 1.5 ? 2 : 1;
       speedBtn.setAttribute('data-speed', String(nextSpeed));
       speedBtn.textContent = `${nextSpeed}x`;
-      const textColor = isLight ? '#000000' : '#FFFFFF';
+      const textColor = theme.text;
+      const buttonBg = hexToRgba(theme.text, isLight ? 0.05 : 0.08);
+      const buttonBorder = hexToRgba(theme.text, isLight ? 0.08 : 0.14);
 
       if (nextSpeed > 1) {
         speedBtn.style.backgroundColor = theme.accent;
         speedBtn.style.color = isLightColor(theme.accent) ? '#000000' : '#FFFFFF';
         speedBtn.style.borderColor = theme.accent;
       } else {
-        speedBtn.style.backgroundColor = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
+        speedBtn.style.backgroundColor = buttonBg;
         speedBtn.style.color = textColor;
-        speedBtn.style.borderColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)';
+        speedBtn.style.borderColor = buttonBorder;
       }
 
       if (activeAudioRef.current && activeAudioRef.current.attId === att.id) {
@@ -1359,7 +1855,7 @@ export const NoteEditor: React.FC = () => {
       return;
     }
 
-    // Check if clicked wavy seekbar on voice message
+    // Check if clicked seekbar on voice message
     if (target.closest('.veris-audio-seekbar-container') || target.closest('.veris-audio-waveform')) {
       e.preventDefault();
       e.stopPropagation();
@@ -1539,7 +2035,7 @@ export const NoteEditor: React.FC = () => {
       const existing = editorRef.current.querySelectorAll(`[data-attachment-id="${state.att.id}"]`);
       existing.forEach(el => el.remove());
 
-      const newEmbed = createAttachmentEmbedDom(state.att, isLight, theme.accent);
+      const newEmbed = createAttachmentEmbedDom(state.att, isLight, theme.accent, theme.bg, theme.text);
       const spaceNode = document.createTextNode('\u00A0');
 
       if (range && editorRef.current.contains(range.startContainer)) {
@@ -1562,7 +2058,9 @@ export const NoteEditor: React.FC = () => {
     state.att = null;
   };
 
+  const plainText = stripHtmlTags(note.content).trim();
   const plainTextLength = stripHtmlTags(note.content).length;
+  const plainTextWords = plainText ? plainText.split(/\s+/).filter(Boolean).length : 0;
 
   const notePlaceholder = React.useMemo(() => {
     if (!note) return NOTE_PLACEHOLDERS[0];
@@ -1581,7 +2079,15 @@ export const NoteEditor: React.FC = () => {
     !note.content?.includes('data-attachment-id');
 
   return (
-    <div className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden relative">
+    <div
+      ref={scrollContainerRef}
+      onScroll={() => {
+        if (scrollContainerRef.current && note?.id) {
+          noteScrollPositionsRef.current[note.id] = scrollContainerRef.current.scrollTop;
+        }
+      }}
+      className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden relative"
+    >
       {/* Floating Formatting Toolbar */}
       <FormattingToolbar
         selectionRect={selectionRect}
@@ -1606,15 +2112,7 @@ export const NoteEditor: React.FC = () => {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center gap-3.5">
-              <div
-                className="p-3 rounded-2xl flex items-center justify-center shrink-0"
-                style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  color: '#EF4444',
-                }}
-              >
-                <Trash2 size={22} />
-              </div>
+              <Trash2 size={24} style={{ color: theme.accent }} className="shrink-0" />
               <div>
                 <h3 className="font-extrabold text-base">Удалить аудиозапись?</h3>
                 <p className="text-xs opacity-60 mt-0.5">
@@ -1637,7 +2135,11 @@ export const NoteEditor: React.FC = () => {
               </button>
               <button
                 onClick={confirmDeleteAudio}
-                className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs text-white bg-red-500 hover:bg-red-600 active:scale-98 transition cursor-pointer shadow-lg shadow-red-500/20"
+                className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                style={{
+                  backgroundColor: theme.accent,
+                  color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
+                }}
               >
                 Удалить
               </button>
@@ -1648,7 +2150,7 @@ export const NoteEditor: React.FC = () => {
 
       {/* Editor Full-Screen Content Area */}
       <div
-        className="w-full max-w-3xl mx-auto px-4 sm:px-12 pt-24 sm:pt-32 pb-44 sm:pb-52 flex flex-col min-h-full"
+        className="w-full max-w-3xl mx-auto px-4 sm:px-12 pt-24 sm:pt-32 pb-48 sm:pb-56 flex flex-col min-h-full"
         onClick={e => {
           if (e.target === e.currentTarget && editorRef.current) {
             editorRef.current.focus();
@@ -1669,15 +2171,19 @@ export const NoteEditor: React.FC = () => {
         />
 
         {/* Note Metadata Line */}
-        <div className="flex items-center justify-start gap-3 text-xs opacity-50 mb-6 font-medium select-none">
-          {quickSettings.showCharCount && (
-            <span>{plainTextLength} {t('chars')}</span>
-          )}
-          {quickSettings.showCharCount && quickSettings.showDate && <span>·</span>}
-          {quickSettings.showDate && (
-            <span>{formatDate(note.updatedAt)}</span>
-          )}
-        </div>
+        {!isFocusMode && (
+          <div className="flex items-center justify-start gap-3.5 text-xs opacity-50 mb-6 font-medium select-none flex-wrap">
+            {quickSettings.showCharCount && (
+              <span>{plainTextLength} {t('chars')}</span>
+            )}
+            {quickSettings.showWordCount && (
+              <span>{plainTextWords} {t('words')}</span>
+            )}
+            {quickSettings.showDate && (
+              <span>{formatDate(note.updatedAt)}</span>
+            )}
+          </div>
+        )}
 
         {/* Rich ContentEditable Note Editor with Drag & Drop Integration & dynamic placeholder */}
         <div className="relative w-full min-h-[320px]">
@@ -1722,7 +2228,7 @@ export const NoteEditor: React.FC = () => {
             onPointerDown={handleEditorPointerDown}
             onClick={handleEditorClick}
             onContextMenu={e => e.preventDefault()}
-            className="w-full bg-transparent border-none outline-hidden leading-relaxed transition font-normal min-h-[320px] focus:outline-none focus:ring-0 cursor-text whitespace-pre-wrap [&_h1]:text-3xl [&_h1]:font-extrabold [&_h1]:my-3 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-xl [&_h3]:font-bold [&_h3]:my-2 [&_h4]:text-lg [&_h4]:font-semibold [&_h4]:my-1 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:pl-4 [&_blockquote]:my-3 [&_blockquote]:opacity-90 [&_pre]:bg-black/20 [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:font-mono [&_pre]:text-xs [&_pre]:my-3 [&_pre]:overflow-x-auto"
+            className="w-full bg-transparent border-none outline-hidden leading-relaxed transition font-normal min-h-[320px] focus:outline-none focus:ring-0 cursor-text whitespace-pre-wrap [&_h1]:text-3xl [&_h1]:font-extrabold [&_h1]:my-3 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-xl [&_h3]:font-bold [&_h3]:my-2 [&_h4]:text-lg [&_h4]:font-semibold [&_h4]:my-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[var(--theme-accent,#eab308)] [&_blockquote]:pl-4 [&_blockquote]:my-3 [&_blockquote]:opacity-90 [&_blockquote_p]:my-0 [&_blockquote_div]:my-0 [&_pre]:bg-black/20 [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:font-mono [&_pre]:text-xs [&_pre]:my-3 [&_pre]:overflow-x-auto"
             style={{
               color: theme.text,
               fontSize: `${quickSettings.fontSize}px`,
@@ -1748,8 +2254,8 @@ export const NoteEditor: React.FC = () => {
         editorRef={editorRef}
       />
 
-      {/* Note Mention Autocomplete Menu (@) */}
-      {mentionQuery !== null && mentionPosition && matchingNotes.length > 0 && (
+      {/* Mention Autocomplete Menu (@) for Notes & Blocks */}
+      {mentionQuery !== null && mentionPosition && mentionItems.length > 0 && (
         <div
           className="fixed z-50 w-64 sm:w-72 max-h-56 overflow-y-auto rounded-2xl border p-1.5 shadow-2xl backdrop-blur-2xl animate-scaleUp flex flex-col gap-1"
           style={{
@@ -1763,16 +2269,26 @@ export const NoteEditor: React.FC = () => {
           onMouseDown={e => e.preventDefault()}
         >
           <div className="px-2.5 py-1 text-[10px] font-bold opacity-45 uppercase tracking-wider select-none">
-            Упомянуть заметку
+            Упомянуть заметку или блок
           </div>
-          {matchingNotes.map((targetNote, idx) => {
+          {mentionItems.map((entry, idx) => {
             const isSelected = idx === selectedMentionIndex;
-            const displayTitle = (targetNote.title?.trim() || 'Без названия').replace(/\s+/g, '_');
+            const isBlock = entry.kind === 'block';
+            const displayTitle = isBlock
+              ? (entry.item.name?.trim() || 'Блок').replace(/\s+/g, '_')
+              : (entry.item.title?.trim() || 'Без названия').replace(/\s+/g, '_');
+
             return (
               <button
-                key={targetNote.id}
+                key={isBlock ? `block-${entry.item.id}` : `note-${entry.item.id}`}
                 type="button"
-                onClick={() => insertNoteMention(targetNote)}
+                onClick={() => {
+                  if (isBlock) {
+                    insertBlockMention(entry.item);
+                  } else {
+                    insertNoteMention(entry.item);
+                  }
+                }}
                 className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center gap-2 transition cursor-pointer select-none ${
                   isSelected ? 'font-bold shadow-xs' : 'opacity-85 hover:opacity-100'
                 }`}
@@ -1788,9 +2304,20 @@ export const NoteEditor: React.FC = () => {
                     color: theme.accent,
                   }}
                 >
-                  <FileText size={13} />
+                  {isBlock ? <Layers size={13} /> : <FileText size={13} />}
                 </div>
                 <span className="truncate flex-1">@{displayTitle}</span>
+                {isBlock && (
+                  <span
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                    style={{
+                      backgroundColor: hexToRgba(theme.accent, 0.15),
+                      color: theme.accent,
+                    }}
+                  >
+                    Блок
+                  </span>
+                )}
               </button>
             );
           })}
@@ -1802,6 +2329,14 @@ export const NoteEditor: React.FC = () => {
         <NoteReadModal
           noteId={readOnlyNoteId}
           onClose={() => setReadOnlyNoteId(null)}
+        />
+      )}
+
+      {/* Block Notes Modal (opened when clicking a block link) */}
+      {activeBlockModalId && (
+        <BlockNotesModal
+          blockId={activeBlockModalId}
+          onClose={() => setActiveBlockModalId(null)}
         />
       )}
     </div>

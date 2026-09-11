@@ -14,7 +14,7 @@ export const CreateBlockModal: React.FC = () => {
     notes,
     theme,
     quickSettings,
-    setNotes,
+    moveNotesToBlock,
   } = useApp();
 
   const [blockName, setBlockName] = useState('');
@@ -44,9 +44,10 @@ export const CreateBlockModal: React.FC = () => {
   }, [isCreateBlockModalOpen, editingBlock, blockModalInitialNoteIds, notes]);
 
   const filteredNotes = useMemo(() => {
-    if (!searchQuery.trim()) return notes;
+    const publicNotes = notes.filter(n => !n.isPrivate);
+    if (!searchQuery.trim()) return publicNotes;
     const q = searchQuery.toLowerCase().trim();
-    return notes.filter(
+    return publicNotes.filter(
       n =>
         (n.title && n.title.toLowerCase().includes(q)) ||
         (n.content && n.content.toLowerCase().includes(q)) ||
@@ -62,18 +63,14 @@ export const CreateBlockModal: React.FC = () => {
 
     if (editingBlock) {
       updateBlock(editingBlock.id, trimmed);
-      // Update notes assignment
-      setNotes(prev =>
-        prev.map(note => {
-          const isSelected = selectedNoteIds.includes(note.id);
-          if (isSelected) {
-            return { ...note, blockId: editingBlock.id, pinned: false, updatedAt: Date.now() };
-          } else if (note.blockId === editingBlock.id) {
-            return { ...note, blockId: null, updatedAt: Date.now() };
-          }
-          return note;
-        })
-      );
+      // Remove unselected notes from block
+      const notesToRemove = notes.filter(n => n.blockId === editingBlock.id && !selectedNoteIds.includes(n.id)).map(n => n.id);
+      if (notesToRemove.length > 0) {
+        moveNotesToBlock(notesToRemove, null);
+      }
+      if (selectedNoteIds.length > 0) {
+        moveNotesToBlock(selectedNoteIds, editingBlock.id);
+      }
     } else {
       createBlock(trimmed, selectedNoteIds);
     }
@@ -104,17 +101,9 @@ export const CreateBlockModal: React.FC = () => {
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 mb-3 border-b shrink-0" style={{ borderColor: cardBorder }}>
+        <div className="flex items-center justify-between pb-1 mb-2 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center font-bold"
-              style={{
-                backgroundColor: hexToRgba(theme.accent, 0.18),
-                color: theme.accent,
-              }}
-            >
-              <Layers size={18} />
-            </div>
+            <Layers size={20} style={{ color: theme.accent }} />
             <h3 className="text-base font-extrabold tracking-tight">
               {editingBlock ? 'Редактировать блок' : 'Новый блок'}
             </h3>
@@ -247,7 +236,7 @@ export const CreateBlockModal: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <div className="pt-3.5 mt-2 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: cardBorder }}>
+        <div className="pt-2 mt-2 flex items-center justify-between gap-3 shrink-0">
           <button
             type="button"
             onClick={closeCreateBlockModal}

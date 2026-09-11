@@ -41,6 +41,7 @@ export const PrivateSpaceView: React.FC = () => {
     setActiveNoteId,
     viewMode,
     setViewMode,
+    previousViewMode,
     theme,
     language,
     quickSettings,
@@ -194,8 +195,27 @@ export const PrivateSpaceView: React.FC = () => {
   const pinnedNotes = filteredPrivateNotes.filter(n => n.pinned);
   const unpinnedNotes = filteredPrivateNotes.filter(n => !n.pinned);
 
-  // Locked State View (Styled exactly like LockScreen)
-  if (!privatePin || isPrivateLocked) {
+  // If private PIN is not set up (Private space is off / not configured)
+  if (!privatePin) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-0 p-6 select-none">
+        <PinModal
+          target="private"
+          mode="set"
+          onClose={() => {
+            const target = previousViewMode && previousViewMode !== 'private' ? previousViewMode : 'notes';
+            setViewMode(target);
+          }}
+          onSuccess={() => {
+            // PinModal saves the PIN and unlocks the space
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Locked State View (When private PIN is active and space is locked)
+  if (isPrivateLocked) {
     return (
       <div className="flex-1 flex flex-col items-center justify-between min-h-0 p-6 sm:p-10 select-none overflow-y-auto">
         {/* Top subtle branding icon */}
@@ -215,23 +235,15 @@ export const PrivateSpaceView: React.FC = () => {
         {/* Center Content: Title, PIN Display & Keypad */}
         <div className="w-full max-w-xs flex flex-col items-center my-auto">
           <h1 className="text-xl font-bold tracking-tight mb-1 opacity-90 text-center leading-snug">
-            {privatePin ? (
-              <>
-                <span>Приватное</span>
-                <br />
-                <span>пространство</span>
-              </>
-            ) : (
-              'Создайте пин-код'
-            )}
+            <span>Приватное</span>
+            <br />
+            <span>пространство</span>
           </h1>
           <p className="text-xs opacity-60 mb-2 text-center">
-            {privatePin
-              ? 'Введите пин-код для доступа'
-              : 'Задайте пин-код для защиты приватного пространства'}
+            Введите пин-код для доступа
           </p>
 
-          {/* Lockout Warning or Dynamic PIN Indicator Dots */}
+          {/* Lockout Warning or Error Text */}
           {isLockedOut ? (
             <div
               className="flex flex-col items-center justify-center p-4 my-3 rounded-2xl border text-center w-full animate-fadeIn"
@@ -248,34 +260,11 @@ export const PrivateSpaceView: React.FC = () => {
               </p>
             </div>
           ) : (
-            <>
-              <div
-                className={`flex items-center justify-center gap-2.5 h-10 my-3 transition-transform ${
-                  isShaking ? 'animate-shake' : ''
-                }`}
-              >
-                {Array.from({ length: Math.max(4, enteredPin.length) }).map((_, index) => {
-                  const isFilled = index < enteredPin.length;
-                  return (
-                    <div
-                      key={index}
-                      className="w-3.5 h-3.5 rounded-full transition-all duration-200"
-                      style={{
-                        backgroundColor: isFilled ? theme.accent : hexToRgba(theme.text, 0.15),
-                        transform: isFilled ? 'scale(1.15)' : 'scale(1)',
-                        boxShadow: isFilled ? `0 0 10px ${hexToRgba(theme.accent, 0.5)}` : 'none',
-                      }}
-                    />
-                  );
-                })}
-              </div>
-
-              {errorText && (
-                <p className="text-xs font-semibold text-red-500 mb-2 animate-fadeIn text-center">
-                  {errorText}
-                </p>
-              )}
-            </>
+            errorText && (
+              <p className="text-xs font-semibold text-red-500 my-2 animate-fadeIn text-center">
+                {errorText}
+              </p>
+            )
           )}
 
           {/* Android 17 / Material You Style Keypad Grid (3x4) */}
@@ -429,7 +418,7 @@ export const PrivateSpaceView: React.FC = () => {
 
   const renderNoteCard = (note: Note) => {
     const plainContent = stripHtmlTags(note.content) || 'Пустая заметка';
-    const titleText = note.title || 'Без названия';
+    const titleText = note.title?.trim() || 'Без названия';
     const hideDots = !!quickSettings.hideTileDots;
 
     return (
@@ -650,7 +639,7 @@ export const PrivateSpaceView: React.FC = () => {
               return (
                 <div className="flex flex-col gap-0.5 text-xs font-bold">
                   {/* 1. "Вверх / вниз" Reorder Actions */}
-                  <div className="grid grid-cols-2 gap-1 pb-1 border-b" style={{ borderColor: hexToRgba(theme.text, 0.1) }}>
+                  <div className="grid grid-cols-2 gap-1 mb-1">
                     <button
                       disabled={!canMoveUp}
                       onClick={e => {

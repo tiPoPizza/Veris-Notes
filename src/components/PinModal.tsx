@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { isLightColor, hexToRgba } from '../themes';
-import { Lock, KeyRound, Delete, ArrowRight, X, Check, ShieldAlert } from 'lucide-react';
+import { Lock, KeyRound, Delete, ArrowRight, X, Check, ShieldAlert, AlertTriangle, FolderInput, Trash2 } from 'lucide-react';
 import { PinTarget } from '../types';
 
 export type PinModalMode = 'set' | 'change' | 'disable';
@@ -22,6 +22,10 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
     privatePin,
     setPrivatePin,
     removePrivatePin,
+    notes,
+    deletedNotes,
+    migratePrivateNotesToPublic,
+    deletePrivateNotesPermanently,
   } = useApp();
 
   const activePin = target === 'private' ? privatePin : appPin;
@@ -37,6 +41,7 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
   const [enteredNew, setEnteredNew] = useState<string>('');
   const [enteredRepeat, setEnteredRepeat] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [showPrivatePrompt, setShowPrivatePrompt] = useState<boolean>(false);
 
   const isLight = isLightColor(theme.bg);
   const accentTextColor = isLightColor(theme.accent) ? '#000000' : '#FFFFFF';
@@ -44,6 +49,19 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
   const cardBorder = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.12)';
   const keyBg = isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.06)';
   const keyHoverBg = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.12)';
+
+  const privateNotesCount =
+    notes.filter(n => Boolean(n.isPrivate)).length +
+    deletedNotes.filter(n => Boolean(n.isPrivate)).length;
+
+  const getNotesWord = (count: number) => {
+    const lastTwo = count % 100;
+    const last = count % 10;
+    if (lastTwo >= 11 && lastTwo <= 19) return 'заметок';
+    if (last === 1) return 'заметка';
+    if (last >= 2 && last <= 4) return 'заметки';
+    return 'заметок';
+  };
 
   // Determine current active input value
   const getCurrentInput = () => {
@@ -147,14 +165,33 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
         setEnteredCurrent('');
         return;
       }
+      if (target === 'private' && privateNotesCount > 0) {
+        setShowPrivatePrompt(true);
+        return;
+      }
       deletePin();
       onSuccess?.();
       onClose();
     }
-  }, [mode, step, enteredNew, enteredRepeat, enteredCurrent, activePin, savePin, deletePin, onSuccess, onClose]);
+  }, [mode, step, enteredNew, enteredRepeat, enteredCurrent, activePin, savePin, deletePin, target, privateNotesCount, onSuccess, onClose]);
+
+  // Handlers for private space notes migration / deletion on disable
+  const handleMigratePrivateToPublic = () => {
+    migratePrivateNotesToPublic();
+    onSuccess?.();
+    onClose();
+  };
+
+  const handlePermanentlyDeletePrivate = () => {
+    deletePrivateNotesPermanently();
+    onSuccess?.();
+    onClose();
+  };
 
   // Physical keyboard listener
   useEffect(() => {
+    if (showPrivatePrompt) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key >= '0' && e.key <= '9') {
         handleDigit(e.key);
@@ -169,7 +206,75 @@ export const PinModal: React.FC<PinModalProps> = ({ mode, target = 'app', onClos
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleDigit, handleBackspace, handleNext, onClose]);
+  }, [handleDigit, handleBackspace, handleNext, onClose, showPrivatePrompt]);
+
+  if (showPrivatePrompt) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md animate-fade-in select-none">
+        <div
+          className="w-full max-w-sm rounded-3xl border p-6 shadow-2xl flex flex-col items-center relative space-y-4 text-center"
+          style={{
+            backgroundColor: isLight ? '#FFFFFF' : '#1C1C1E',
+            borderColor: cardBorder,
+            color: theme.text,
+          }}
+        >
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-xs"
+            style={{
+              backgroundColor: hexToRgba('#F59E0B', 0.15),
+              color: '#F59E0B',
+            }}
+          >
+            <AlertTriangle size={24} strokeWidth={2.2} />
+          </div>
+
+          <div className="space-y-1.5">
+            <h2 className="text-lg font-bold tracking-tight">
+              Отключение привата
+            </h2>
+            <p className="text-xs opacity-70 leading-relaxed px-1">
+              В приватном разделе находится{' '}
+              <span className="font-bold">{privateNotesCount} {getNotesWord(privateNotesCount)}</span>.
+              Что сделать с ними перед отключением защиты?
+            </p>
+          </div>
+
+          <div className="w-full space-y-2 pt-2">
+            <button
+              onClick={handleMigratePrivateToPublic}
+              className="w-full py-3 px-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2.5 transition active:scale-[0.98] cursor-pointer shadow-sm"
+              style={{
+                backgroundColor: theme.accent,
+                color: accentTextColor,
+              }}
+            >
+              <FolderInput size={15} />
+              <span>Перенести в общие</span>
+            </button>
+
+            <button
+              onClick={handlePermanentlyDeletePrivate}
+              className="w-full py-3 px-4 rounded-2xl border font-bold text-xs flex items-center justify-center gap-2.5 text-red-500 hover:bg-red-500/10 active:scale-[0.98] transition cursor-pointer"
+              style={{
+                borderColor: hexToRgba('#EF4444', 0.3),
+              }}
+            >
+              <Trash2 size={15} />
+              <span>Безвозвратно удалить</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 px-4 rounded-2xl font-semibold text-xs opacity-60 hover:opacity-100 transition cursor-pointer"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const getTitle = () => {
     if (mode === 'set') {

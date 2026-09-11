@@ -31,8 +31,7 @@ export const ColorSelectGroup: React.FC<ColorSelectGroupProps> = ({
     <div className="space-y-2">
       {/* Label and current HEX preview */}
       <div className="flex items-center justify-between">
-        <label className="text-[10px] font-extrabold opacity-60 uppercase tracking-wider flex items-center gap-1.5">
-          <Palette size={12} style={{ color: theme.accent }} />
+        <label className="text-[10px] font-extrabold opacity-60 uppercase tracking-wider">
           <span>{label}</span>
         </label>
         <button
@@ -55,6 +54,7 @@ export const ColorSelectGroup: React.FC<ColorSelectGroupProps> = ({
       <div className="flex items-center gap-2 flex-wrap">
         {BASE_8_COLORS.map(c => {
           const isSelected = selectedColor.toLowerCase() === c.toLowerCase();
+          const lightCheck = isLightColor(c);
           return (
             <button
               key={c}
@@ -71,7 +71,13 @@ export const ColorSelectGroup: React.FC<ColorSelectGroupProps> = ({
               }}
               title={c}
             >
-              {isSelected && <Check size={14} className="text-white stroke-[3]" />}
+              {isSelected && (
+                <Check
+                  size={14}
+                  className="stroke-[3]"
+                  style={{ color: lightCheck ? '#0F172A' : '#FFFFFF' }}
+                />
+              )}
             </button>
           );
         })}
@@ -102,10 +108,7 @@ export const ColorSelectGroup: React.FC<ColorSelectGroupProps> = ({
               <span>Свой</span>
             </>
           ) : (
-            <>
-              <Palette size={13} style={{ color: theme.accent }} />
-              <span>+ Свой</span>
-            </>
+            <span>+ Свой</span>
           )}
         </button>
       </div>

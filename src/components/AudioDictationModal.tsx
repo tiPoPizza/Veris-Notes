@@ -363,6 +363,15 @@ export const AudioDictationModal: React.FC<AudioDictationModalProps> = ({
     onClose();
   };
 
+  // Re-request microphone permissions with tactile visual feedback & status verification
+  const handleRetryPermission = async () => {
+    setIsRequestingPermission(true);
+    setErrorMessage(null);
+    // Visual debounce so the user distinctly sees the retry action taking effect
+    await new Promise(resolve => setTimeout(resolve, 450));
+    await startRecording();
+  };
+
   // Start recording ONLY when modal opens, clean up when modal closes
   useEffect(() => {
     if (isOpen) {
@@ -380,6 +389,42 @@ export const AudioDictationModal: React.FC<AudioDictationModalProps> = ({
       stopAllResources();
     };
   }, [isOpen]);
+
+  // If permission was denied, automatically re-check when user returns to the tab (e.g. from browser settings)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let permStatus: any = null;
+    if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'microphone' as any })
+        .then((status: any) => {
+          permStatus = status;
+          status.onchange = () => {
+            if (status.state === 'granted') {
+              setIsPermissionDenied(false);
+              setErrorMessage(null);
+              startRecording();
+            }
+          };
+        })
+        .catch(() => {});
+    }
+
+    const handleWindowFocus = () => {
+      if (isPermissionDenied && !isRecording) {
+        startRecording();
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      if (permStatus) {
+        permStatus.onchange = null;
+      }
+    };
+  }, [isOpen, isPermissionDenied, isRecording]);
 
   if (!isOpen) return null;
 
@@ -399,22 +444,18 @@ export const AudioDictationModal: React.FC<AudioDictationModalProps> = ({
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b" style={{ borderColor: cardBorder }}>
-          <div className="flex items-center gap-2.5">
-            <div
-              className={`w-9 h-9 rounded-2xl flex items-center justify-center transition ${
-                isRecording && !isPaused ? 'animate-pulse' : ''
+        {/* Header - No divider line, No icon background podlozhka */}
+        <div className="flex items-center justify-between pb-1">
+          <div className="flex items-center gap-3">
+            <Mic
+              size={22}
+              style={{ color: theme.accent }}
+              className={`shrink-0 transition-transform duration-300 ${
+                isRecording && !isPaused ? 'animate-pulse scale-110' : ''
               }`}
-              style={{
-                backgroundColor: hexToRgba(theme.accent, 0.18),
-                color: theme.accent,
-              }}
-            >
-              <Mic size={18} />
-            </div>
+            />
             <div>
-              <h3 className="font-extrabold text-base">Голосовая запись</h3>
+              <h3 className="font-extrabold text-base leading-tight">Голосовая запись</h3>
               <p className="text-[11px] opacity-60">
                 {isRequestingPermission
                   ? 'Запрос доступа к микрофону...'
@@ -441,18 +482,36 @@ export const AudioDictationModal: React.FC<AudioDictationModalProps> = ({
 
         {/* Permission Denied / Error Alert with Re-request Button */}
         {errorMessage && (
-          <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-medium flex flex-col gap-3">
+          <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-medium flex flex-col gap-3 animate-fadeIn">
             <div className="flex items-start gap-2.5">
-              {isPermissionDenied ? <Lock size={18} className="shrink-0 mt-0.5" /> : <AlertCircle size={18} className="shrink-0 mt-0.5" />}
-              <p className="leading-relaxed font-semibold">{errorMessage}</p>
+              {isPermissionDenied ? (
+                <Lock size={18} className="shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle size={18} className="shrink-0 mt-0.5" />
+              )}
+              <div className="flex flex-col gap-1 flex-1">
+                <p className="leading-relaxed font-semibold">{errorMessage}</p>
+                {isPermissionDenied && (
+                  <p className="text-[11px] opacity-85 leading-normal">
+                    Чтобы включить микрофон: нажмите на значок настроек или замка 🔒 в строке адреса браузера → «Разрешения» → разрешите доступ к микрофону, затем нажмите кнопку ниже.
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2 pt-1">
               <button
-                onClick={startRecording}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-red-500 text-white font-bold text-xs hover:bg-red-600 active:scale-95 transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                onClick={handleRetryPermission}
+                disabled={isRequestingPermission}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-red-500 text-white font-bold text-xs hover:bg-red-600 active:scale-95 transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md disabled:opacity-75"
               >
                 <RefreshCw size={14} className={isRequestingPermission ? 'animate-spin' : ''} />
-                <span>{isPermissionDenied ? 'Запросить разрешение ещё раз' : 'Повторить попытку'}</span>
+                <span>
+                  {isRequestingPermission
+                    ? 'Проверяем доступ...'
+                    : isPermissionDenied
+                    ? 'Запросить разрешение ещё раз'
+                    : 'Повторить попытку'}
+                </span>
               </button>
             </div>
           </div>

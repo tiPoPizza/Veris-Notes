@@ -41,8 +41,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   const [endTime, setEndTime] = useState('13:00');
   const [remindOnDay, setRemindOnDay] = useState(false);
   const [description, setDescription] = useState('');
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
+    setIsDeleteConfirmOpen(false);
     if (editingEvent) {
       setTitle(editingEvent.title);
       setDate(editingEvent.date);
@@ -107,9 +109,14 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     onClose();
   };
 
-  const handleDelete = () => {
+  const handleDeleteClick = () => {
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
     if (editingEvent) {
       deleteCalendarEvent(editingEvent.id);
+      setIsDeleteConfirmOpen(false);
       onClose();
     }
   };
@@ -267,7 +274,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             {editingEvent ? (
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
                 className="py-2.5 px-3.5 rounded-2xl border text-xs font-bold text-red-500 hover:bg-red-500/10 active:scale-95 transition flex items-center gap-1.5 cursor-pointer"
                 style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}
               >
@@ -301,6 +308,62 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Delete Confirmation Modal (matching Photo 2) */}
+      {isDeleteConfirmOpen && editingEvent && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center p-4 backdrop-blur-md animate-fadeIn"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
+          onClick={() => setIsDeleteConfirmOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl p-6 shadow-2xl border backdrop-blur-2xl transition-all space-y-4"
+            style={{
+              backgroundColor: isLight ? '#ffffff' : hexToRgba(theme.bg, 0.96),
+              borderColor: borderColor,
+              color: theme.text,
+              boxShadow: `0 25px 50px ${isLight ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.5)'}`,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3.5">
+              <Trash2 size={24} style={{ color: theme.accent }} className="shrink-0" />
+              <div>
+                <h3 className="font-extrabold text-base">Переместить в корзину?</h3>
+                <p className="text-xs opacity-60 mt-0.5">
+                  Событие можно будет восстановить из корзины.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                className="flex-1 py-3 px-4 rounded-2xl border font-bold text-xs hover:opacity-80 active:scale-98 transition cursor-pointer"
+                style={{
+                  borderColor: borderColor,
+                  backgroundColor: hexToRgba(theme.text, 0.05),
+                  color: theme.text,
+                }}
+              >
+                Нет
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                style={{
+                  backgroundColor: theme.accent,
+                  color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
+                }}
+              >
+                Да
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

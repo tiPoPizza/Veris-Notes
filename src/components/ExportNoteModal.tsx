@@ -16,8 +16,7 @@ import {
   FileCheck,
   Copy,
 } from 'lucide-react';
-import { EXPORT_FORMATS, ExportFormatOption, exportNoteToFile } from '../utils/fileExporter';
-import { stripHtmlTags } from '../utils/textUtils';
+import { EXPORT_FORMATS, ExportFormatOption, exportNoteToFile, htmlToPlainText } from '../utils/fileExporter';
 
 export const ExportNoteModal: React.FC = () => {
   const {
@@ -89,7 +88,8 @@ export const ExportNoteModal: React.FC = () => {
         setExportSuccessMessage(null);
       }, 4000);
     } catch (err: any) {
-      alert(`Ошибка экспорта: ${err?.message || 'Не удалось сохранить файл'}`);
+      setExportSuccessMessage(`Ошибка экспорта: ${err?.message || 'Не удалось сохранить файл'}`);
+      setTimeout(() => setExportSuccessMessage(null), 4000);
     } finally {
       setIsExporting(false);
     }
@@ -97,7 +97,7 @@ export const ExportNoteModal: React.FC = () => {
 
   const handleCopyToClipboard = async () => {
     if (!selectedNote) return;
-    const textToCopy = `${selectedNote.title ? selectedNote.title + '\n\n' : ''}${stripHtmlTags(selectedNote.content)}`;
+    const textToCopy = `${selectedNote.title ? selectedNote.title + '\n\n' : ''}${htmlToPlainText(selectedNote.content)}`;
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(textToCopy);
@@ -114,7 +114,8 @@ export const ExportNoteModal: React.FC = () => {
         setExportSuccessMessage(null);
       }, 3500);
     } catch (err: any) {
-      alert(`Не удалось скопировать текст: ${err?.message || 'Ошибка буфера обмена'}`);
+      setExportSuccessMessage(`Не удалось скопировать: ${err?.message || 'Ошибка буфера обмена'}`);
+      setTimeout(() => setExportSuccessMessage(null), 4000);
     }
   };
 
@@ -152,17 +153,9 @@ export const ExportNoteModal: React.FC = () => {
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 mb-3 border-b shrink-0" style={{ borderColor: cardBorder }}>
+        <div className="flex items-center justify-between pb-2 mb-2 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center font-bold"
-              style={{
-                backgroundColor: hexToRgba(theme.accent, 0.18),
-                color: theme.accent,
-              }}
-            >
-              <Download size={18} />
-            </div>
+            <Download size={20} style={{ color: theme.accent }} />
             <h3 className="text-base font-extrabold tracking-tight">Экспорт заметки</h3>
           </div>
           <button

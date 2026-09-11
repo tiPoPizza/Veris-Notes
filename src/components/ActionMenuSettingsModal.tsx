@@ -228,17 +228,14 @@ export const ActionMenuSettingsModal: React.FC<ActionMenuSettingsModalProps> = (
                   }}
                 >
                   {/* Icon & Title */}
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                      className="w-6 flex items-center justify-center shrink-0"
                       style={{
-                        backgroundColor: isEnabled
-                          ? hexToRgba(theme.accent, 0.14)
-                          : hexToRgba(theme.text, 0.06),
                         color: isEnabled ? theme.accent : theme.text,
                       }}
                     >
-                      <IconComponent size={16} />
+                      <IconComponent size={20} />
                     </div>
                     <span className="text-xs font-bold truncate" style={{ color: theme.text }}>
                       {itemDef.label}

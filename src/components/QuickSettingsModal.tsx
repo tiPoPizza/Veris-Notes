@@ -75,7 +75,7 @@ export const QuickSettingsModal: React.FC = () => {
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 mb-2 border-b shrink-0" style={{ borderColor: cardBorder }}>
+        <div className="flex items-center justify-between pb-1 mb-2 shrink-0">
           <h3 className="text-sm font-bold tracking-wide uppercase opacity-90">{t('quickSettings')}</h3>
           <button
             onClick={() => setIsQuickSettingsOpen(false)}
@@ -113,13 +113,32 @@ export const QuickSettingsModal: React.FC = () => {
             style={{ backgroundColor: cardBg, borderColor: cardBorder }}
             onClick={() => handleToggle('showCharCount')}
           >
-            <span className="text-xs font-medium">Счётчик символов</span>
+            <span className="text-xs font-medium">{t('charCounter')}</span>
             <div
               className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
                 quickSettings.showCharCount ? 'justify-end' : 'justify-start'
               }`}
               style={{
                 backgroundColor: quickSettings.showCharCount ? theme.accent : hexToRgba(theme.text, 0.2),
+              }}
+            >
+              <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+            </div>
+          </div>
+
+          {/* Toggle: Schetchik slov */}
+          <div
+            className="flex items-center justify-between py-2 px-3 rounded-xl border transition-all cursor-pointer hover:bg-white/5 active:scale-[0.99]"
+            style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+            onClick={() => handleToggle('showWordCount')}
+          >
+            <span className="text-xs font-medium">{t('wordCounter')}</span>
+            <div
+              className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
+                quickSettings.showWordCount ? 'justify-end' : 'justify-start'
+              }`}
+              style={{
+                backgroundColor: quickSettings.showWordCount ? theme.accent : hexToRgba(theme.text, 0.2),
               }}
             >
               <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
@@ -221,7 +240,7 @@ export const QuickSettingsModal: React.FC = () => {
         </div>
 
         {/* Footer: Export and All Settings buttons */}
-        <div className="space-y-2 pt-3 border-t shrink-0 mt-2" style={{ borderColor: cardBorder }}>
+        <div className="space-y-2 pt-2 shrink-0 mt-2">
           <button
             onClick={handleExportClick}
             className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border font-bold text-xs hover:bg-white/10 active:scale-98 transition cursor-pointer"

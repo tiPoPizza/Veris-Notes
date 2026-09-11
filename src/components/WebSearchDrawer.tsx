@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { hexToRgba, isLightColor } from '../themes';
 import {
-  Globe,
   X,
   Sparkles,
   ExternalLink,
@@ -19,8 +18,15 @@ import {
   ChevronUp,
   ArrowLeft,
   FileText,
+  SlidersHorizontal,
+  ArrowUpDown,
+  Clock,
+  Pin,
+  Edit2,
+  MoreHorizontal,
+  Square,
 } from 'lucide-react';
-import { WebSearchResponse } from '../types';
+import { WebSearchResponse, WebSearchHistoryItem } from '../types';
 
 export const WebSearchDrawer: React.FC = () => {
   const {
@@ -32,6 +38,7 @@ export const WebSearchDrawer: React.FC = () => {
     addSearchHistoryItem,
     deleteSearchHistoryItem,
     clearSearchHistory,
+    updateSearchHistoryItem,
     insertTextIntoActiveNote,
     setViewMode,
     setActiveSettingsTab,
@@ -45,11 +52,80 @@ export const WebSearchDrawer: React.FC = () => {
   const [errorInfo, setErrorInfo] = useState<{ type: string; message: string } | null>(null);
   const [copiedAction, setCopiedAction] = useState<string | null>(null);
   const [isPowerSettingsOpen, setIsPowerSettingsOpen] = useState(false);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedSources, setExpandedSources] = useState<Record<number, boolean>>({});
 
+  const [historyItemMenuOpenId, setHistoryItemMenuOpenId] = useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<WebSearchHistoryItem | null>(null);
+  const [itemToRename, setItemToRename] = useState<WebSearchHistoryItem | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [showClearAllModal, setShowClearAllModal] = useState(false);
+  const historyItemMenuRef = useRef<HTMLDivElement>(null);
+
+  const [isHistoryMenuOpen, setIsHistoryMenuOpen] = useState(false);
+  const [historySortOrder, setHistorySortOrder] = useState<'newest' | 'oldest'>(() => {
+    try {
+      const saved = localStorage.getItem('websearch_history_sort_order');
+      if (saved === 'oldest' || saved === 'newest') return saved;
+    } catch {
+      // fallback
+    }
+    return 'newest';
+  });
+  const historyMenuRef = useRef<HTMLDivElement>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleStopSearch = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Close model dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    if (isModelDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isModelDropdownOpen]);
+
+  // Close history menu & history item menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (historyItemMenuRef.current && !historyItemMenuRef.current.contains(e.target as Node)) {
+        setHistoryItemMenuOpenId(null);
+      }
+      if (historyMenuRef.current && !historyMenuRef.current.contains(e.target as Node)) {
+        setIsHistoryMenuOpen(false);
+      }
+    };
+    if (historyItemMenuOpenId || isHistoryMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [historyItemMenuOpenId, isHistoryMenuOpen]);
 
   // Reset to new clean search session whenever drawer is opened
   useEffect(() => {
@@ -59,23 +135,35 @@ export const WebSearchDrawer: React.FC = () => {
       setErrorInfo(null);
       setShowHistory(false);
       setIsPowerSettingsOpen(false);
+      setIsModelDropdownOpen(false);
       setCopiedAction(null);
       setTimeout(() => {
         if (textareaRef.current) {
           textareaRef.current.style.height = '28px';
+          textareaRef.current.style.overflowY = 'hidden';
           textareaRef.current.focus();
         }
       }, 150);
     }
   }, [isWebSearchOpen]);
 
-  // Dynamically auto-resize textarea as user types, then add vertical scrollbar
+  // Dynamically auto-resize textarea as user types, adding scrollbar ONLY when content exceeds 2+ lines
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = '28px';
+      textareaRef.current.style.overflowY = 'hidden';
       const scrollH = textareaRef.current.scrollHeight;
-      const targetH = Math.min(Math.max(scrollH, 28), 120);
-      textareaRef.current.style.height = `${targetH}px`;
+      if (!query) {
+        textareaRef.current.style.height = '28px';
+        textareaRef.current.style.overflowY = 'hidden';
+      } else if (scrollH > 38) {
+        const targetH = Math.min(scrollH, 120);
+        textareaRef.current.style.height = `${targetH}px`;
+        textareaRef.current.style.overflowY = scrollH > 120 ? 'auto' : 'hidden';
+      } else {
+        textareaRef.current.style.height = '28px';
+        textareaRef.current.style.overflowY = 'hidden';
+      }
     }
   }, [query]);
 
@@ -89,7 +177,15 @@ export const WebSearchDrawer: React.FC = () => {
     }
   }, [response]);
 
-  if (!isWebSearchOpen) return null;
+  const sortedItems = useMemo(() => {
+    return [...searchHistory].sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return historySortOrder === 'oldest'
+        ? a.timestamp - b.timestamp
+        : b.timestamp - a.timestamp;
+    });
+  }, [searchHistory, historySortOrder]);
 
   const isLight = isLightColor(theme.bg);
 
@@ -98,8 +194,13 @@ export const WebSearchDrawer: React.FC = () => {
   const cardBg = hexToRgba(theme.text, isLight ? 0.04 : 0.07);
   const cardBorder = quickSettings.showBorder ? theme.accent : hexToRgba(theme.text, 0.12);
   const floatingBarBg = isLight ? hexToRgba(theme.bg, 0.88) : hexToRgba(theme.bg, 0.82);
+  const glassBg = hexToRgba(theme.text, 0.08);
 
-  const hasApiKey = Boolean(webSearchSettings.tavilyApiKey?.trim());
+  const activeApiKey =
+    webSearchSettings.provider === 'exa'
+      ? webSearchSettings.exaApiKey?.trim()
+      : webSearchSettings.tavilyApiKey?.trim();
+  const hasApiKey = Boolean(activeApiKey);
 
   const handleSearch = async (overrideQuery?: string) => {
     const cleanQuery = (overrideQuery ?? query).trim();
@@ -108,24 +209,34 @@ export const WebSearchDrawer: React.FC = () => {
     // Reset input field so user can type a new prompt immediately
     setQuery('');
     if (textareaRef.current) {
-      textareaRef.current.style.height = '38px';
+      textareaRef.current.style.height = '28px';
+      textareaRef.current.style.overflowY = 'hidden';
     }
 
     setLoading(true);
     setErrorInfo(null);
     setShowHistory(false);
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const res = await fetch('/api/web-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           query: cleanQuery,
-          apiKey: webSearchSettings.tavilyApiKey.trim(),
+          apiKey: activeApiKey,
           provider: webSearchSettings.provider,
           searchDepth: webSearchSettings.searchDepth,
           answerDetail: webSearchSettings.answerDetail,
-          maxResults: webSearchSettings.maxResults,
+          maxResults: webSearchSettings.provider === 'exa' ? 10 : 7,
+          exaModel: webSearchSettings.exaModel,
+          exaIncludeAnswer: webSearchSettings.exaIncludeAnswer,
         }),
       });
 
@@ -146,19 +257,27 @@ export const WebSearchDrawer: React.FC = () => {
         response: data,
       });
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return;
+      }
       setErrorInfo({
         type: 'NETWORK_ERROR',
         message: err.message || 'Не удалось подключиться к серверу поиска.',
       });
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSearch();
+    if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        e.preventDefault();
+        handleSearch();
+      } else {
+        e.stopPropagation();
+      }
     }
   };
 
@@ -224,10 +343,67 @@ export const WebSearchDrawer: React.FC = () => {
     const isToday = d.toDateString() === now.toDateString();
     const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     if (isToday) {
-      return `Сегодня, ${timeStr}`;
+      return `Сегодня ${timeStr}`;
     }
-    return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${timeStr}`;
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) {
+      return `Вчера ${timeStr}`;
+    }
+    const dateFormatted = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    return `${dateFormatted} ${timeStr}`;
   };
+
+  const getSourcesCountText = (count: number) => {
+    if (count % 10 === 1 && count % 100 !== 11) return `${count} источник`;
+    if ([2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)) return `${count} источника`;
+    return `${count} источников`;
+  };
+
+  const handleSetHistorySortOrder = (order: 'newest' | 'oldest') => {
+    setHistorySortOrder(order);
+    try {
+      localStorage.setItem('websearch_history_sort_order', order);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleTogglePinItem = (item: WebSearchHistoryItem) => {
+    updateSearchHistoryItem(item.id, { pinned: !item.pinned });
+    setHistoryItemMenuOpenId(null);
+  };
+
+  const handleSaveRename = () => {
+    if (itemToRename && renameTitle.trim()) {
+      updateSearchHistoryItem(itemToRename.id, { query: renameTitle.trim() });
+    }
+    setItemToRename(null);
+  };
+
+  const handleConfirmDeleteItem = () => {
+    if (itemToDelete) {
+      deleteSearchHistoryItem(itemToDelete.id);
+      setItemToDelete(null);
+    }
+  };
+
+  const handleConfirmClearAll = () => {
+    clearSearchHistory();
+    setShowClearAllModal(false);
+  };
+
+  const getModelDisplayName = () => {
+    if (webSearchSettings.provider === 'exa') {
+      if (webSearchSettings.exaModel === 'deep') return 'Exa Deep';
+      if (webSearchSettings.exaModel === 'deep-reasoning') return 'Exa Deep-reasoning';
+      return 'Exa Fast';
+    }
+    if (webSearchSettings.searchDepth === 'advanced') return 'Tavily глубокий';
+    return 'Tavily быстрый';
+  };
+
+  if (!isWebSearchOpen) return null;
 
   return (
     <div
@@ -245,103 +421,409 @@ export const WebSearchDrawer: React.FC = () => {
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Top Header */}
+        {/* Floating Top Action Controls (Over Content) */}
         <div
-          className="px-5 py-3.5 flex items-center justify-between border-b shrink-0 z-10"
-          style={{ borderColor: hexToRgba(theme.text, 0.1) }}
+          className={
+            showHistory
+              ? 'absolute top-3 inset-x-0 px-4 flex items-center justify-between z-30 pointer-events-none transition-all'
+              : 'pt-3 pb-1 px-4 flex items-center justify-between shrink-0 z-30 relative transition-all bg-transparent'
+          }
         >
-          <div className="flex items-center gap-2.5">
+          {/* Left Area: History Toggle / Back button + Model Name Dropdown */}
+          <div className="flex items-center gap-2 min-w-0">
             {showHistory ? (
-              <button
-                onClick={() => setShowHistory(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 active:scale-95 transition cursor-pointer"
-                title="Назад к поиску"
-              >
-                <ArrowLeft size={18} />
-              </button>
+              <div className="flex items-center gap-2 pointer-events-auto">
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="p-2.5 rounded-2xl border shadow-lg backdrop-blur-xl hover:opacity-80 active:scale-95 transition flex items-center justify-center cursor-pointer shrink-0"
+                  style={{
+                    backgroundColor: glassBg,
+                    borderColor: cardBorder,
+                    color: theme.text,
+                  }}
+                  title="Назад к поиску"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <div
+                  className="px-3.5 py-2.5 rounded-2xl border shadow-lg backdrop-blur-xl flex items-center shrink-0 select-none"
+                  style={{
+                    backgroundColor: glassBg,
+                    borderColor: cardBorder,
+                    color: theme.text,
+                  }}
+                >
+                  <span className="text-xs sm:text-sm font-bold tracking-tight">История поисков</span>
+                </div>
+              </div>
             ) : (
-              <div
-                className="p-2 rounded-2xl flex items-center justify-center shadow-xs"
-                style={{
-                  backgroundColor: hexToRgba(theme.accent, 0.18),
-                  color: theme.accent,
-                }}
-              >
-                <Globe size={18} />
-              </div>
-            )}
+              <>
+                {/* Search History Button moved to far left */}
+                <button
+                  onClick={() => {
+                    setShowHistory(true);
+                    setIsModelDropdownOpen(false);
+                    setIsPowerSettingsOpen(false);
+                  }}
+                  className="p-2 rounded-xl hover:bg-white/10 active:scale-95 transition cursor-pointer"
+                  style={{ color: theme.text }}
+                  title="История поисков"
+                >
+                  <History size={18} />
+                </button>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-sm tracking-tight">
-                  {showHistory ? 'История поисков' : 'Веб-поиск'}
-                </h3>
-                {!showHistory && (
-                  <span
-                    className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider"
-                    style={{
-                      backgroundColor: hexToRgba(theme.accent, 0.15),
-                      color: theme.accent,
+                {/* Model Selector Button with Chevron & Dropdown Submenu */}
+                <div className="relative" ref={modelDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModelDropdownOpen(prev => !prev);
+                      setIsPowerSettingsOpen(false);
                     }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-sm sm:text-[15px] font-bold tracking-tight select-none"
+                    style={{ color: theme.text }}
+                    title="Выбор параметров модели"
                   >
-                    Tavily {webSearchSettings.searchDepth === 'advanced' ? 'Глубокий' : 'Быстрый'}
-                  </span>
-                )}
-              </div>
-            </div>
+                    <span>{getModelDisplayName()}</span>
+                    {isModelDropdownOpen ? (
+                      <ChevronUp size={16} className="opacity-70 transition-transform" />
+                    ) : (
+                      <ChevronDown size={16} className="opacity-70 transition-transform" />
+                    )}
+                  </button>
+
+                  {/* Dropdown Menu (Styled matching site) */}
+                  {isModelDropdownOpen && (
+                    <div
+                      className="absolute top-full left-0 mt-1.5 w-64 p-2 rounded-2xl shadow-2xl border backdrop-blur-2xl z-50 space-y-1 animate-fadeIn"
+                      style={{
+                        backgroundColor: isLight ? hexToRgba(theme.bg, 0.96) : hexToRgba(theme.bg, 0.92),
+                        borderColor: cardBorder,
+                        boxShadow: `0 12px 35px ${isLight ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.6)'}`,
+                      }}
+                    >
+                      {/* Tavily Options */}
+                      {webSearchSettings.provider === 'tavily' && (
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWebSearchSettings(prev => ({ ...prev, searchDepth: 'basic' }));
+                              setIsModelDropdownOpen(false);
+                            }}
+                            className="w-full p-2.5 rounded-xl flex items-center justify-between transition cursor-pointer text-left hover:bg-white/5"
+                            style={{
+                              backgroundColor:
+                                webSearchSettings.searchDepth === 'basic'
+                                  ? hexToRgba(theme.accent, 0.18)
+                                  : 'transparent',
+                            }}
+                          >
+                            <div>
+                              <div className="text-xs font-bold">Быстрый</div>
+                              <div className="text-[10px] opacity-60 mt-0.5">1 кредит</div>
+                            </div>
+                            {webSearchSettings.searchDepth === 'basic' && (
+                              <Check size={16} style={{ color: theme.accent }} />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWebSearchSettings(prev => ({ ...prev, searchDepth: 'advanced' }));
+                              setIsModelDropdownOpen(false);
+                            }}
+                            className="w-full p-2.5 rounded-xl flex items-center justify-between transition cursor-pointer text-left hover:bg-white/5"
+                            style={{
+                              backgroundColor:
+                                webSearchSettings.searchDepth === 'advanced'
+                                  ? hexToRgba(theme.accent, 0.18)
+                                  : 'transparent',
+                            }}
+                          >
+                            <div>
+                              <div className="text-xs font-bold">Глубокий</div>
+                              <div className="text-[10px] opacity-60 mt-0.5">2 кредита</div>
+                            </div>
+                            {webSearchSettings.searchDepth === 'advanced' && (
+                              <Check size={16} style={{ color: theme.accent }} />
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Exa Options */}
+                      {webSearchSettings.provider === 'exa' && (
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWebSearchSettings(prev => ({ ...prev, exaModel: 'fast' }));
+                              setIsModelDropdownOpen(false);
+                            }}
+                            className="w-full p-2.5 rounded-xl flex items-center justify-between transition cursor-pointer text-left hover:bg-white/5"
+                            style={{
+                              backgroundColor:
+                                webSearchSettings.exaModel === 'fast'
+                                  ? hexToRgba(theme.accent, 0.18)
+                                  : 'transparent',
+                            }}
+                          >
+                            <div>
+                              <div className="text-xs font-bold">Fast</div>
+                              <div className="text-[10px] opacity-60 mt-0.5">7$ / 1k</div>
+                            </div>
+                            {webSearchSettings.exaModel === 'fast' && (
+                              <Check size={16} style={{ color: theme.accent }} />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWebSearchSettings(prev => ({ ...prev, exaModel: 'deep' }));
+                              setIsModelDropdownOpen(false);
+                            }}
+                            className="w-full p-2.5 rounded-xl flex items-center justify-between transition cursor-pointer text-left hover:bg-white/5"
+                            style={{
+                              backgroundColor:
+                                webSearchSettings.exaModel === 'deep'
+                                  ? hexToRgba(theme.accent, 0.18)
+                                  : 'transparent',
+                            }}
+                          >
+                            <div>
+                              <div className="text-xs font-bold">Deep</div>
+                              <div className="text-[10px] opacity-60 mt-0.5">12$ / 1k</div>
+                            </div>
+                            {webSearchSettings.exaModel === 'deep' && (
+                              <Check size={16} style={{ color: theme.accent }} />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWebSearchSettings(prev => ({ ...prev, exaModel: 'deep-reasoning' }));
+                              setIsModelDropdownOpen(false);
+                            }}
+                            className="w-full p-2.5 rounded-xl flex items-center justify-between transition cursor-pointer text-left hover:bg-white/5"
+                            style={{
+                              backgroundColor:
+                                webSearchSettings.exaModel === 'deep-reasoning'
+                                  ? hexToRgba(theme.accent, 0.18)
+                                  : 'transparent',
+                            }}
+                          >
+                            <div>
+                              <div className="text-xs font-bold">Deep-reasoning</div>
+                              <div className="text-[10px] opacity-60 mt-0.5">15$ / 1k</div>
+                            </div>
+                            {webSearchSettings.exaModel === 'deep-reasoning' && (
+                              <Check size={16} style={{ color: theme.accent }} />
+                            )}
+                          </button>
+
+                          {/* Answer toggle row */}
+                          <div
+                            className="p-2.5 rounded-xl flex items-center justify-between"
+                            style={{ backgroundColor: hexToRgba(theme.text, 0.03) }}
+                          >
+                            <div>
+                              <div className="text-xs font-bold">Answer</div>
+                              <div className="text-[10px] opacity-50">+5$ / 1k</div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setWebSearchSettings(prev => ({ ...prev, exaIncludeAnswer: false }))
+                                }
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                  !webSearchSettings.exaIncludeAnswer ? 'shadow-xs' : 'opacity-50'
+                                }`}
+                                style={{
+                                  backgroundColor: !webSearchSettings.exaIncludeAnswer
+                                    ? theme.accent
+                                    : hexToRgba(theme.text, 0.08),
+                                  color: !webSearchSettings.exaIncludeAnswer ? '#FFFFFF' : theme.text,
+                                }}
+                              >
+                                Выкл
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setWebSearchSettings(prev => ({ ...prev, exaIncludeAnswer: true }))
+                                }
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                  webSearchSettings.exaIncludeAnswer ? 'shadow-xs' : 'opacity-50'
+                                }`}
+                                style={{
+                                  backgroundColor: webSearchSettings.exaIncludeAnswer
+                                    ? theme.accent
+                                    : hexToRgba(theme.text, 0.08),
+                                  color: webSearchSettings.exaIncludeAnswer ? '#FFFFFF' : theme.text,
+                                }}
+                              >
+                                Вкл
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* History Toggle Button (No counter badge) */}
-            {!showHistory ? (
-              <button
-                onClick={() => {
-                  setShowHistory(true);
-                  setIsPowerSettingsOpen(false);
-                }}
-                className="p-2 rounded-xl hover:bg-white/10 active:scale-95 transition cursor-pointer"
-                style={{
-                  color: theme.text,
-                }}
-                title="История поисков"
-              >
-                <History size={16} />
-              </button>
-            ) : (
-              searchHistory.length > 0 && (
+          {/* Right Action Controls: History Menu / Zap Power Settings / Close */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {showHistory ? (
+              <div className="flex items-center gap-2 pointer-events-auto">
+                {/* 3 Sliders Filter / Sort / Clear Menu */}
+                <div className="relative shrink-0" ref={historyMenuRef}>
+                  <button
+                    onClick={() => setIsHistoryMenuOpen(prev => !prev)}
+                    className="p-2.5 rounded-2xl border shadow-lg backdrop-blur-xl hover:opacity-80 active:scale-95 transition flex items-center justify-center cursor-pointer"
+                    style={{
+                      backgroundColor: isHistoryMenuOpen ? hexToRgba(theme.accent, 0.18) : glassBg,
+                      borderColor: isHistoryMenuOpen ? theme.accent : cardBorder,
+                      color: isHistoryMenuOpen ? theme.accent : theme.text,
+                    }}
+                    title="Сортировка и опции истории"
+                  >
+                    <SlidersHorizontal size={18} />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {isHistoryMenuOpen && (
+                    <div
+                      className="absolute right-0 mt-2 w-56 rounded-2xl border shadow-2xl backdrop-blur-2xl p-2 z-50 animate-scaleUp flex flex-col gap-2"
+                      style={{
+                        backgroundColor: isLight ? hexToRgba(theme.bg, 0.96) : hexToRgba(theme.bg, 0.92),
+                        borderColor: cardBorder,
+                        color: theme.text,
+                        boxShadow: isLight ? '0 10px 25px -5px rgba(0,0,0,0.1)' : '0 20px 25px -5px rgba(0,0,0,0.5)',
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <div className="text-[11px] font-bold uppercase tracking-wider opacity-60 flex items-center justify-between px-1">
+                        <span>Сортировка поисков</span>
+                        <ArrowUpDown size={12} style={{ color: theme.accent }} />
+                      </div>
+
+                      <div className="space-y-1">
+                        {[
+                          { id: 'newest' as const, label: 'Сначала новые', icon: Clock },
+                          { id: 'oldest' as const, label: 'Сначала старые', icon: Clock },
+                        ].map(opt => {
+                          const isSelected = historySortOrder === opt.id;
+                          const IconComp = opt.icon;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                handleSetHistorySortOrder(opt.id);
+                                setIsHistoryMenuOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition cursor-pointer text-left border ${
+                                isSelected ? 'shadow-xs font-bold' : 'hover:opacity-90 font-normal'
+                              }`}
+                              style={{
+                                backgroundColor: isSelected
+                                  ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
+                                  : hexToRgba(theme.text, 0.04),
+                                color: isSelected ? theme.accent : theme.text,
+                                borderColor: isSelected
+                                  ? theme.accent
+                                  : hexToRgba(theme.text, 0.08),
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <IconComp
+                                  size={14}
+                                  style={{ color: isSelected ? theme.accent : hexToRgba(theme.text, 0.5) }}
+                                />
+                                <span>{opt.label}</span>
+                              </div>
+                              {isSelected && <Check size={13} style={{ color: theme.accent }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {searchHistory.length > 0 && (
+                        <div className="pt-1.5 border-t" style={{ borderColor: hexToRgba(theme.text, 0.08) }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsHistoryMenuOpen(false);
+                              setShowClearAllModal(true);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-red-500 hover:bg-red-500/10 active:scale-98 transition cursor-pointer"
+                          >
+                            <Trash2 size={14} />
+                            <span>Очистить всё</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Close Button */}
                 <button
-                  onClick={clearSearchHistory}
-                  className="px-2.5 py-1 rounded-xl text-xs font-semibold text-red-500 hover:bg-red-500/10 active:scale-95 transition cursor-pointer"
-                  title="Очистить историю"
+                  onClick={() => setIsWebSearchOpen(false)}
+                  className="p-2.5 rounded-2xl border shadow-lg backdrop-blur-xl hover:opacity-80 active:scale-95 transition flex items-center justify-center cursor-pointer shrink-0"
+                  style={{
+                    backgroundColor: glassBg,
+                    borderColor: cardBorder,
+                    color: theme.text,
+                  }}
+                  title="Закрыть"
                 >
-                  Очистить всё
+                  <X size={18} />
                 </button>
-              )
-            )}
+              </div>
+            ) : (
+              <>
+                {/* Lightning Quick Settings Button */}
+                <button
+                  onClick={() => {
+                    setIsPowerSettingsOpen(prev => !prev);
+                    setIsModelDropdownOpen(false);
+                  }}
+                  className="p-2.5 rounded-2xl border shadow-lg backdrop-blur-xl hover:opacity-80 active:scale-95 transition flex items-center justify-center cursor-pointer"
+                  style={{
+                    backgroundColor: isPowerSettingsOpen ? hexToRgba(theme.accent, 0.2) : glassBg,
+                    borderColor: isPowerSettingsOpen ? theme.accent : cardBorder,
+                    color: isPowerSettingsOpen ? theme.accent : theme.text,
+                  }}
+                  title="Параметры провайдера и поиска"
+                >
+                  <Zap size={16} />
+                </button>
 
-            {/* Quick Power Mode Toggle (Zap Icon) */}
-            {!showHistory && (
-              <button
-                onClick={() => setIsPowerSettingsOpen(prev => !prev)}
-                className="p-2 rounded-xl hover:bg-white/10 active:scale-95 transition cursor-pointer"
-                style={{
-                  backgroundColor: isPowerSettingsOpen ? hexToRgba(theme.accent, 0.2) : 'transparent',
-                  color: isPowerSettingsOpen ? theme.accent : theme.text,
-                }}
-                title="Глубина поиска и параметры"
-              >
-                <Zap size={16} />
-              </button>
+                {/* Close Button */}
+                <button
+                  onClick={() => setIsWebSearchOpen(false)}
+                  className="p-2.5 rounded-2xl border shadow-lg backdrop-blur-xl hover:opacity-80 active:scale-95 transition flex items-center justify-center cursor-pointer"
+                  style={{
+                    backgroundColor: glassBg,
+                    borderColor: cardBorder,
+                    color: theme.text,
+                  }}
+                  title="Закрыть"
+                >
+                  <X size={18} />
+                </button>
+              </>
             )}
-
-            {/* Close Button */}
-            <button
-              onClick={() => setIsWebSearchOpen(false)}
-              className="p-2 rounded-xl hover:bg-white/10 active:scale-95 transition cursor-pointer opacity-70 hover:opacity-100"
-              title="Закрыть"
-            >
-              <X size={18} />
-            </button>
           </div>
         </div>
 
@@ -355,148 +837,291 @@ export const WebSearchDrawer: React.FC = () => {
             }}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold">Глубина поиска</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-extrabold">Провайдер и параметры</span>
+              </div>
               <button
                 onClick={() => {
                   setIsWebSearchOpen(false);
                   setViewMode('settings');
-                  setActiveSettingsTab('ai');
+                  setActiveSettingsTab('search');
                 }}
                 className="flex items-center gap-1 text-[11px] font-bold opacity-75 hover:opacity-100 hover:underline cursor-pointer"
                 style={{ color: theme.accent }}
               >
-                <span>Настройки ИИ</span>
+                <span>Настройки поиска</span>
                 <ExternalLink size={11} />
               </button>
             </div>
 
-            {/* Depth selector */}
+            {/* Provider Tabs in Power Dropdown */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() =>
-                  setWebSearchSettings(prev => ({ ...prev, searchDepth: 'basic' }))
-                }
-                className="p-2.5 rounded-xl border text-left transition cursor-pointer"
+                onClick={() => setWebSearchSettings(prev => ({ ...prev, provider: 'tavily' }))}
+                className="p-2 rounded-xl border text-left transition cursor-pointer"
                 style={{
                   backgroundColor:
-                    webSearchSettings.searchDepth === 'basic'
+                    webSearchSettings.provider === 'tavily'
                       ? hexToRgba(theme.accent, 0.18)
                       : 'transparent',
                   borderColor:
-                    webSearchSettings.searchDepth === 'basic'
+                    webSearchSettings.provider === 'tavily'
                       ? theme.accent
                       : hexToRgba(theme.text, 0.12),
                 }}
               >
-                <div className="text-xs font-bold">Быстрый</div>
-                <div className="text-[10px] opacity-60 mt-0.5">1 кредит • Быстрый поиск</div>
+                <div className="text-xs font-bold">Tavily</div>
               </button>
 
               <button
                 type="button"
-                onClick={() =>
-                  setWebSearchSettings(prev => ({ ...prev, searchDepth: 'advanced' }))
-                }
-                className="p-2.5 rounded-xl border text-left transition cursor-pointer"
+                onClick={() => setWebSearchSettings(prev => ({ ...prev, provider: 'exa' }))}
+                className="p-2 rounded-xl border text-left transition cursor-pointer"
                 style={{
                   backgroundColor:
-                    webSearchSettings.searchDepth === 'advanced'
+                    webSearchSettings.provider === 'exa'
                       ? hexToRgba(theme.accent, 0.18)
                       : 'transparent',
                   borderColor:
-                    webSearchSettings.searchDepth === 'advanced'
+                    webSearchSettings.provider === 'exa'
                       ? theme.accent
                       : hexToRgba(theme.text, 0.12),
                 }}
               >
-                <div className="text-xs font-bold">Глубокий</div>
-                <div className="text-[10px] opacity-60 mt-0.5">2 кредита • Анализ источников</div>
+                <div className="text-xs font-bold">Exa</div>
               </button>
             </div>
 
-            {/* Answer detail selector */}
-            <div className="flex items-center justify-between text-xs pt-1">
-              <span className="opacity-70 font-medium">Детализация:</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setWebSearchSettings(prev => ({ ...prev, answerDetail: 'basic' }))
-                  }
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                    webSearchSettings.answerDetail === 'basic' ? 'shadow-xs' : 'opacity-60'
-                  }`}
-                  style={{
-                    backgroundColor:
-                      webSearchSettings.answerDetail === 'basic'
-                        ? theme.accent
-                        : hexToRgba(theme.text, 0.08),
-                    color: webSearchSettings.answerDetail === 'basic' ? '#FFFFFF' : theme.text,
-                  }}
-                >
-                  Кратко
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setWebSearchSettings(prev => ({ ...prev, answerDetail: 'advanced' }))
-                  }
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                    webSearchSettings.answerDetail === 'advanced' ? 'shadow-xs' : 'opacity-60'
-                  }`}
-                  style={{
-                    backgroundColor:
-                      webSearchSettings.answerDetail === 'advanced'
-                        ? theme.accent
-                        : hexToRgba(theme.text, 0.08),
-                    color: webSearchSettings.answerDetail === 'advanced' ? '#FFFFFF' : theme.text,
-                  }}
-                >
-                  Подробно
-                </button>
-              </div>
-            </div>
+            {/* TAVILY SPECIFIC SETTINGS */}
+            {webSearchSettings.provider === 'tavily' && (
+              <div className="space-y-3 pt-1">
+                {/* Depth selector */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="opacity-70 font-medium">Глубина поиска</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWebSearchSettings(prev => ({ ...prev, searchDepth: 'basic' }))
+                      }
+                      className="p-2 rounded-xl border text-left transition cursor-pointer"
+                      style={{
+                        backgroundColor:
+                          webSearchSettings.searchDepth === 'basic'
+                            ? hexToRgba(theme.accent, 0.18)
+                            : 'transparent',
+                        borderColor:
+                          webSearchSettings.searchDepth === 'basic'
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.12),
+                      }}
+                    >
+                      <div className="text-xs font-bold">Быстрый</div>
+                      <div className="text-[10px] opacity-60 mt-0.5">1 кредит</div>
+                    </button>
 
-            {/* Number of sources setting */}
-            <div className="flex items-center justify-between text-xs pt-1 border-t" style={{ borderColor: hexToRgba(theme.text, 0.08) }}>
-              <span className="opacity-70 font-medium">Количество источников:</span>
-              <div className="flex items-center gap-1">
-                {[3, 5, 7, 10].map(num => (
-                  <button
-                    key={num}
-                    type="button"
-                    onClick={() =>
-                      setWebSearchSettings(prev => ({ ...prev, maxResults: num }))
-                    }
-                    className={`w-7 h-7 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
-                      webSearchSettings.maxResults === num ? 'shadow-xs' : 'opacity-60'
-                    }`}
-                    style={{
-                      backgroundColor:
-                        webSearchSettings.maxResults === num
-                          ? theme.accent
-                          : hexToRgba(theme.text, 0.08),
-                      color: webSearchSettings.maxResults === num ? '#FFFFFF' : theme.text,
-                    }}
-                  >
-                    {num}
-                  </button>
-                ))}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWebSearchSettings(prev => ({ ...prev, searchDepth: 'advanced' }))
+                      }
+                      className="p-2 rounded-xl border text-left transition cursor-pointer"
+                      style={{
+                        backgroundColor:
+                          webSearchSettings.searchDepth === 'advanced'
+                            ? hexToRgba(theme.accent, 0.18)
+                            : 'transparent',
+                        borderColor:
+                          webSearchSettings.searchDepth === 'advanced'
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.12),
+                      }}
+                    >
+                      <div className="text-xs font-bold">Глубокий</div>
+                      <div className="text-[10px] opacity-60 mt-0.5">2 кредита</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Answer detail selector */}
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <span className="opacity-70 font-medium">Детализация</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWebSearchSettings(prev => ({ ...prev, answerDetail: 'basic' }))
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        webSearchSettings.answerDetail === 'basic' ? 'shadow-xs' : 'opacity-60'
+                      }`}
+                      style={{
+                        backgroundColor:
+                          webSearchSettings.answerDetail === 'basic'
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.08),
+                        color: webSearchSettings.answerDetail === 'basic' ? '#FFFFFF' : theme.text,
+                      }}
+                    >
+                      Кратко
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWebSearchSettings(prev => ({ ...prev, answerDetail: 'advanced' }))
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        webSearchSettings.answerDetail === 'advanced' ? 'shadow-xs' : 'opacity-60'
+                      }`}
+                      style={{
+                        backgroundColor:
+                          webSearchSettings.answerDetail === 'advanced'
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.08),
+                        color: webSearchSettings.answerDetail === 'advanced' ? '#FFFFFF' : theme.text,
+                      }}
+                    >
+                      Подробно
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* EXA SPECIFIC SETTINGS */}
+            {webSearchSettings.provider === 'exa' && (
+              <div className="space-y-3 pt-1">
+                {/* Exa Model selection (Fast, Deep, Deep-reasoning) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="opacity-70 font-medium">Модель Exa</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {/* Fast */}
+                    <button
+                      type="button"
+                      onClick={() => setWebSearchSettings(prev => ({ ...prev, exaModel: 'fast' }))}
+                      className="p-2 rounded-xl border text-left transition cursor-pointer"
+                      style={{
+                        backgroundColor:
+                          webSearchSettings.exaModel === 'fast'
+                            ? hexToRgba(theme.accent, 0.18)
+                            : 'transparent',
+                        borderColor:
+                          webSearchSettings.exaModel === 'fast'
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.12),
+                      }}
+                    >
+                      <div className="text-[11px] font-bold">Fast</div>
+                      <div className="text-[9px] font-mono opacity-65">7$ / 1k</div>
+                    </button>
+
+                    {/* Deep */}
+                    <button
+                      type="button"
+                      onClick={() => setWebSearchSettings(prev => ({ ...prev, exaModel: 'deep' }))}
+                      className="p-2 rounded-xl border text-left transition cursor-pointer"
+                      style={{
+                        backgroundColor:
+                          webSearchSettings.exaModel === 'deep'
+                            ? hexToRgba(theme.accent, 0.18)
+                            : 'transparent',
+                        borderColor:
+                          webSearchSettings.exaModel === 'deep'
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.12),
+                      }}
+                    >
+                      <div className="text-[11px] font-bold">Deep</div>
+                      <div className="text-[9px] font-mono opacity-65">12$ / 1k</div>
+                    </button>
+
+                    {/* Deep-reasoning */}
+                    <button
+                      type="button"
+                      onClick={() => setWebSearchSettings(prev => ({ ...prev, exaModel: 'deep-reasoning' }))}
+                      className="p-2 rounded-xl border text-left transition cursor-pointer"
+                      style={{
+                        backgroundColor:
+                          webSearchSettings.exaModel === 'deep-reasoning'
+                            ? hexToRgba(theme.accent, 0.18)
+                            : 'transparent',
+                        borderColor:
+                          webSearchSettings.exaModel === 'deep-reasoning'
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.12),
+                      }}
+                    >
+                      <div className="text-[11px] font-bold">Reasoning</div>
+                      <div className="text-[9px] font-mono opacity-65">15$ / 1k</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Exa Answer toggle (+5$ / 1k) */}
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <div>
+                    <span className="opacity-85 font-semibold block">Генерация ответа</span>
+                    <span className="text-[10px] opacity-50">+5$ / 1k</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWebSearchSettings(prev => ({ ...prev, exaIncludeAnswer: false }))
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        !webSearchSettings.exaIncludeAnswer ? 'shadow-xs' : 'opacity-60'
+                      }`}
+                      style={{
+                        backgroundColor:
+                          !webSearchSettings.exaIncludeAnswer
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.08),
+                        color: !webSearchSettings.exaIncludeAnswer ? '#FFFFFF' : theme.text,
+                      }}
+                    >
+                      Выкл
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWebSearchSettings(prev => ({ ...prev, exaIncludeAnswer: true }))
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        webSearchSettings.exaIncludeAnswer ? 'shadow-xs' : 'opacity-60'
+                      }`}
+                      style={{
+                        backgroundColor:
+                          webSearchSettings.exaIncludeAnswer
+                            ? theme.accent
+                            : hexToRgba(theme.text, 0.08),
+                        color: webSearchSettings.exaIncludeAnswer ? '#FFFFFF' : theme.text,
+                      }}
+                    >
+                      Вкл
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Main Scrollable Area (Content flows under floating bottom bar) */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 pb-28 scroll-smooth"
+          className="flex-1 overflow-y-auto px-4 sm:px-5 space-y-4 pb-28 scroll-smooth"
+          style={{ paddingTop: showHistory ? '72px' : '16px' }}
         >
           {/* HISTORY VIEW */}
           {showHistory ? (
             <div className="space-y-3 animate-fadeIn">
-              {searchHistory.length === 0 ? (
+              {sortedItems.length === 0 ? (
                 <div className="py-24 px-4 flex flex-col items-center justify-center text-center animate-fadeIn">
                   <p className="text-xs sm:text-sm font-medium opacity-55 max-w-[300px] leading-relaxed select-none">
                     Кто-то боится пустоты, а кого-то она успокаивает
@@ -504,55 +1129,121 @@ export const WebSearchDrawer: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {searchHistory.map(item => (
-                    <div
-                      key={item.id}
-                      onClick={() => {
-                        setResponse(item.response);
-                        setShowHistory(false);
-                      }}
-                      className="p-3 rounded-2xl border transition hover:border-white/30 cursor-pointer group relative flex flex-col gap-1.5"
-                      style={{
-                        backgroundColor: cardBg,
-                        borderColor: hexToRgba(theme.text, 0.1),
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-xs font-bold truncate flex-1 group-hover:opacity-90">
-                          {item.query}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteSearchHistoryItem(item.id);
-                          }}
-                          className="p-1 rounded-lg opacity-40 hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition cursor-pointer"
-                          title="Удалить из истории"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
+                  {sortedItems.map(item => {
+                    const isMenuOpen = historyItemMenuOpenId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          setResponse(item.response);
+                          setShowHistory(false);
+                        }}
+                        className="p-3 rounded-2xl border transition hover:border-white/30 cursor-pointer group relative flex flex-col gap-1.5"
+                        style={{
+                          backgroundColor: cardBg,
+                          borderColor: hexToRgba(theme.text, 0.1),
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 truncate flex-1 min-w-0">
+                            {item.pinned && (
+                              <Pin
+                                size={12}
+                                className="shrink-0 fill-current rotate-45"
+                                style={{ color: theme.accent }}
+                              />
+                            )}
+                            <span className="text-xs font-bold truncate group-hover:opacity-90">
+                              {item.query}
+                            </span>
+                          </div>
 
-                      <div className="flex items-center justify-between text-[10px] opacity-55">
-                        <span>{formatTimestamp(item.timestamp)}</span>
-                        <div className="flex items-center gap-2">
-                          <span>
-                            {item.response.results?.length || 0} источников
-                          </span>
-                          <span
-                            className="px-1.5 py-0.5 rounded-md font-mono text-[9px] uppercase font-bold"
-                            style={{
-                              backgroundColor: hexToRgba(theme.accent, 0.15),
-                              color: theme.accent,
-                            }}
-                          >
-                            {item.response.searchDepth === 'advanced' ? 'Глубокий' : 'Быстрый'}
+                          {/* 3-Dots Action Button & Dropdown Submenu */}
+                          <div className="relative shrink-0" ref={isMenuOpen ? historyItemMenuRef : undefined}>
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                setHistoryItemMenuOpenId(prev => (prev === item.id ? null : item.id));
+                              }}
+                              className="p-1 rounded-lg opacity-50 group-hover:opacity-100 hover:bg-white/10 active:scale-90 transition cursor-pointer"
+                              style={{ color: theme.text }}
+                              title="Опции поиска"
+                            >
+                              <MoreHorizontal size={15} />
+                            </button>
+
+                            {/* Submenu Dropdown */}
+                            {isMenuOpen && (
+                              <div
+                                className="absolute right-0 top-full mt-1 w-44 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-2xl z-50 flex flex-col gap-0.5 text-xs font-semibold animate-fadeIn"
+                                style={{
+                                  backgroundColor: isLight ? 'rgba(255, 255, 255, 0.98)' : hexToRgba(theme.bg, 0.98),
+                                  borderColor: hexToRgba(theme.text, 0.15),
+                                  color: theme.text,
+                                  boxShadow: `0 10px 30px ${isLight ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.6)'}`,
+                                }}
+                                onClick={e => e.stopPropagation()}
+                              >
+                                {/* Pin / Unpin */}
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    handleTogglePinItem(item);
+                                  }}
+                                  className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                                >
+                                  <Pin
+                                    size={13}
+                                    style={{ color: theme.accent }}
+                                    className={item.pinned ? 'fill-current' : ''}
+                                  />
+                                  <span>{item.pinned ? 'Открепить' : 'Закрепить'}</span>
+                                </button>
+
+                                {/* Rename */}
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    setHistoryItemMenuOpenId(null);
+                                    setRenameTitle(item.query);
+                                    setItemToRename(item);
+                                  }}
+                                  className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                                >
+                                  <Edit2 size={13} style={{ color: theme.accent }} />
+                                  <span>Переименовать</span>
+                                </button>
+
+                                {/* Delete */}
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    setHistoryItemMenuOpenId(null);
+                                    setItemToDelete(item);
+                                  }}
+                                  className="flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-red-500/15 text-red-500 active:scale-98 transition cursor-pointer text-left"
+                                >
+                                  <Trash2 size={13} />
+                                  <span>Удалить</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] opacity-60">
+                          <span className="font-mono">{formatTimestamp(item.timestamp)}</span>
+                          <span className="font-mono opacity-80">
+                            {getSourcesCountText(item.response.results?.length || 0)}
                           </span>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -572,17 +1263,21 @@ export const WebSearchDrawer: React.FC = () => {
                     <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                        Необходим API-ключ Tavily (BYOK)
+                        {webSearchSettings.provider === 'exa'
+                          ? 'Необходим API-ключ Exa (BYOK)'
+                          : 'Необходим API-ключ Tavily (BYOK)'}
                       </h4>
                       <p className="text-[11px] opacity-80 mt-1 leading-relaxed">
-                        Веб-поиск работает по системе собственного ключа (BYOK). Получите бесплатный ключ (1000 запросов/мес) на сайте Tavily.
+                        {webSearchSettings.provider === 'exa'
+                          ? 'Веб-поиск работает через Exa Neural Search по системе собственного ключа. Получите ключ на сайте exa.ai.'
+                          : 'Веб-поиск работает по системе собственного ключа (BYOK). Получите бесплатный ключ (1000 запросов/мес) на сайте Tavily.'}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 pt-1">
                     <a
-                      href="https://tavily.com"
+                      href={webSearchSettings.provider === 'exa' ? 'https://dashboard.exa.ai' : 'https://tavily.com'}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5 transition active:scale-98 shadow-xs"
@@ -591,7 +1286,7 @@ export const WebSearchDrawer: React.FC = () => {
                         color: '#FFFFFF',
                       }}
                     >
-                      <span>Получить на tavily.com</span>
+                      <span>{webSearchSettings.provider === 'exa' ? 'Получить на exa.ai' : 'Получить на tavily.com'}</span>
                       <ExternalLink size={12} />
                     </a>
 
@@ -599,7 +1294,7 @@ export const WebSearchDrawer: React.FC = () => {
                       onClick={() => {
                         setIsWebSearchOpen(false);
                         setViewMode('settings');
-                        setActiveSettingsTab('ai');
+                        setActiveSettingsTab('search');
                       }}
                       className="py-2 px-3 rounded-xl text-xs font-bold border hover:bg-white/10 transition active:scale-98"
                       style={{
@@ -625,7 +1320,7 @@ export const WebSearchDrawer: React.FC = () => {
                 >
                   <AlertCircle size={16} className="shrink-0 mt-0.5" />
                   <div className="text-xs">
-                    <span className="font-bold">Ошибка поиска: </span>
+                    <span className="font-bold">Ошибка поиска </span>
                     <span>{errorInfo.message}</span>
                   </div>
                 </div>
@@ -644,9 +1339,15 @@ export const WebSearchDrawer: React.FC = () => {
                     <RefreshCw size={22} />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-xs font-extrabold tracking-tight">Поиск в интернете...</h4>
+                    <h4 className="text-xs font-extrabold tracking-tight">
+                      {webSearchSettings.provider === 'exa'
+                        ? `Поиск через Exa (${webSearchSettings.exaModel})...`
+                        : 'Поиск в интернете (Tavily)...'}
+                    </h4>
                     <p className="text-[11px] opacity-60">
-                      {webSearchSettings.searchDepth === 'advanced'
+                      {webSearchSettings.provider === 'exa'
+                        ? 'Ищем через нейронный поиск Exa и извлекаем контент'
+                        : webSearchSettings.searchDepth === 'advanced'
                         ? 'Анализируем глубокие источники и формируем подробное саммари'
                         : 'Собираем релевантные факты и готовим выжимку'}
                     </p>
@@ -910,22 +1611,21 @@ export const WebSearchDrawer: React.FC = () => {
           )}
         </div>
 
-        {/* Floating Bottom Input Bar (Auto-resizing textarea, content scrolls underneath) */}
+        {/* Docked Bottom Input Bar */}
         {!showHistory && (
-          <div className="absolute bottom-4 left-4 right-4 z-20 pointer-events-auto">
+          <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4 pt-1 transition-all space-y-2 relative z-30 bg-transparent">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 handleSearch();
               }}
-              className="p-1.5 pl-3 rounded-2xl border shadow-xl backdrop-blur-2xl flex items-center gap-2 transition-all"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-2xl border transition shadow-xs"
               style={{
-                backgroundColor: floatingBarBg,
-                borderColor: query.trim() ? theme.accent : hexToRgba(theme.text, 0.18),
-                boxShadow: `0 12px 30px ${isLight ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.45)'}`,
+                backgroundColor: hexToRgba(theme.text, isLight ? 0.04 : 0.08),
+                borderColor: cardBorder,
               }}
             >
-              <div className="relative flex-1 flex items-center min-h-[36px]">
+              <div className="flex-1 flex items-center min-w-0">
                 <textarea
                   ref={textareaRef}
                   value={query}
@@ -934,36 +1634,227 @@ export const WebSearchDrawer: React.FC = () => {
                   placeholder="Что подсказать"
                   disabled={loading}
                   rows={1}
-                  className="w-full text-xs font-medium bg-transparent outline-hidden transition resize-none leading-5 py-1.5 px-0.5 block overflow-y-auto"
+                  enterKeyHint="enter"
+                  className="w-full bg-transparent text-xs sm:text-[13px] outline-hidden resize-none leading-[24px] py-0 transition-all placeholder:opacity-40"
                   style={{
                     color: theme.text,
-                    height: '28px',
-                    maxHeight: '120px',
+                    height: '24px',
+                    overflowY: 'hidden',
                   }}
                 />
               </div>
 
               <button
-                type="submit"
-                disabled={!query.trim() || loading || !hasApiKey}
-                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition active:scale-95 shadow-xs ${
-                  query.trim() && hasApiKey && !loading
-                    ? 'cursor-pointer hover:opacity-90'
-                    : 'opacity-40 cursor-not-allowed'
-                }`}
+                type={loading ? "button" : "submit"}
+                onClick={loading ? handleStopSearch : undefined}
+                disabled={!loading && (!query.trim() || !hasApiKey)}
+                className="p-1.5 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center"
                 style={{
-                  backgroundColor: theme.accent,
-                  color: '#FFFFFF',
+                  backgroundColor: loading
+                    ? theme.text
+                    : (query.trim() && hasApiKey ? theme.accent : 'transparent'),
+                  color: loading
+                    ? (isLight ? '#FFFFFF' : '#0F172A')
+                    : (query.trim() && hasApiKey ? '#FFFFFF' : theme.text),
                 }}
-                title="Отправить запрос (Enter)"
+                title={loading ? "Остановить генерацию" : "Отправить запрос (Shift + Enter)"}
               >
                 {loading ? (
-                  <RefreshCw size={15} className="animate-spin" />
+                  <Square size={13} className="fill-current" />
                 ) : (
                   <ArrowUp size={16} />
                 )}
               </button>
             </form>
+          </div>
+        )}
+
+        {/* Delete Single Search Item Confirmation Modal */}
+        {itemToDelete && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 backdrop-blur-md animate-fadeIn"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+            onClick={() => setItemToDelete(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 border backdrop-blur-2xl animate-scaleUp"
+              style={{
+                backgroundColor: isLight ? hexToRgba(theme.bg, 0.98) : hexToRgba(theme.bg, 0.94),
+                borderColor: cardBorder,
+                color: theme.text,
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="shrink-0 flex items-center justify-center">
+                  <Trash2 size={24} style={{ color: theme.accent }} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">Удалить поиск?</h3>
+                  <p className="text-xs opacity-60 mt-0.5 line-clamp-2">
+                    «{itemToDelete.query}» будет удален безвозвратно.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setItemToDelete(null)}
+                  className="flex-1 py-3 px-4 rounded-2xl border font-bold text-xs hover:opacity-80 active:scale-98 transition cursor-pointer"
+                  style={{
+                    borderColor: cardBorder,
+                    backgroundColor: hexToRgba(theme.text, 0.05),
+                    color: theme.text,
+                  }}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteItem}
+                  className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                  style={{
+                    backgroundColor: theme.accent,
+                    color: '#FFFFFF',
+                  }}
+                >
+                  Удалить
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rename Search Modal */}
+        {itemToRename && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 backdrop-blur-md animate-fadeIn"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+            onClick={() => setItemToRename(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 border backdrop-blur-2xl animate-scaleUp"
+              style={{
+                backgroundColor: isLight ? hexToRgba(theme.bg, 0.98) : hexToRgba(theme.bg, 0.94),
+                borderColor: cardBorder,
+                color: theme.text,
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="shrink-0 flex items-center justify-center">
+                  <Edit2 size={24} style={{ color: theme.accent }} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">Переименовать поиск</h3>
+                  <p className="text-xs opacity-60 mt-0.5">
+                    Укажите новое название для этого запроса
+                  </p>
+                </div>
+              </div>
+
+              <input
+                type="text"
+                value={renameTitle}
+                onChange={e => setRenameTitle(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleSaveRename();
+                  if (e.key === 'Escape') setItemToRename(null);
+                }}
+                autoFocus
+                className="w-full px-3.5 py-2.5 rounded-2xl border text-sm font-semibold outline-hidden transition"
+                style={{
+                  backgroundColor: hexToRgba(theme.text, 0.04),
+                  borderColor: cardBorder,
+                  color: theme.text,
+                }}
+                placeholder="Поисковый запрос..."
+              />
+
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setItemToRename(null)}
+                  className="flex-1 py-3 px-4 rounded-2xl border font-bold text-xs hover:opacity-80 active:scale-98 transition cursor-pointer"
+                  style={{
+                    borderColor: cardBorder,
+                    backgroundColor: hexToRgba(theme.text, 0.05),
+                    color: theme.text,
+                  }}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveRename}
+                  className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                  style={{
+                    backgroundColor: theme.accent,
+                    color: '#FFFFFF',
+                  }}
+                >
+                  Сохранить
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Clear All Search History Confirmation Modal */}
+        {showClearAllModal && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 backdrop-blur-md animate-fadeIn"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+            onClick={() => setShowClearAllModal(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 border backdrop-blur-2xl animate-scaleUp"
+              style={{
+                backgroundColor: isLight ? hexToRgba(theme.bg, 0.98) : hexToRgba(theme.bg, 0.94),
+                borderColor: cardBorder,
+                color: theme.text,
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="shrink-0 flex items-center justify-center">
+                  <Trash2 size={24} style={{ color: theme.accent }} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">Очистить всю историю?</h3>
+                  <p className="text-xs opacity-60 mt-0.5 line-clamp-2">
+                    Все поисковые запросы будут удалены безвозвратно.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowClearAllModal(false)}
+                  className="flex-1 py-3 px-4 rounded-2xl border font-bold text-xs hover:opacity-80 active:scale-98 transition cursor-pointer"
+                  style={{
+                    borderColor: cardBorder,
+                    backgroundColor: hexToRgba(theme.text, 0.05),
+                    color: theme.text,
+                  }}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmClearAll}
+                  className="flex-1 py-3 px-4 rounded-2xl font-bold text-xs active:scale-98 transition cursor-pointer shadow-lg hover:opacity-90"
+                  style={{
+                    backgroundColor: theme.accent,
+                    color: '#FFFFFF',
+                  }}
+                >
+                  Очистить
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

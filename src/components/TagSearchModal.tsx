@@ -8,6 +8,7 @@ import {
   Check,
   Trash2,
   ArrowUpDown,
+  FileSearch,
   Sparkles,
   History,
   AlertCircle,
@@ -39,6 +40,9 @@ export const TagSearchModal: React.FC = () => {
     setSearchQuery,
     searchTarget,
     setSearchTarget,
+    semanticSearchSettings,
+    isSemanticSearchActive,
+    setIsSemanticSearchActive,
     deleteTagByName,
     theme,
     language,
@@ -170,12 +174,12 @@ export const TagSearchModal: React.FC = () => {
 
   const renderSearchAndTagsCard = () => (
     <div
-      className="w-full rounded-2xl p-3.5 sm:p-4 shadow-2xl border transition-all space-y-3 shrink-0 overflow-hidden"
+      className="w-full rounded-2xl p-3.5 sm:p-4 shadow-xl border transition-all space-y-3 shrink-0 overflow-hidden"
       style={{
         backgroundColor: cardBg,
         color: theme.text,
         borderColor: hexToRgba(theme.text, 0.15),
-        boxShadow: `0 20px 40px ${isLight ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.5)'}`,
+        boxShadow: isLight ? '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.04)' : '0 20px 25px -5px rgba(0,0,0,0.4)',
       }}
       onClick={e => e.stopPropagation()}
     >
@@ -213,76 +217,118 @@ export const TagSearchModal: React.FC = () => {
             ) : null}
           </div>
 
-          {/* Target Filter Segmented Buttons - Outline style only */}
-          <div
-            className="grid grid-cols-3 gap-1.5 p-1 rounded-xl border w-full"
-            style={{
-              backgroundColor: hexToRgba(theme.text, 0.03),
-              borderColor: hexToRgba(theme.text, 0.08),
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setSearchTarget('all')}
-              className={`py-1.5 px-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
-                searchTarget === 'all'
-                  ? 'border-solid shadow-xs'
-                  : 'border-transparent opacity-65 hover:opacity-100'
-              }`}
+          {/* Target Filter Segmented Buttons - Clean transparent container */}
+          <div className="flex items-center gap-1.5 w-full">
+            <div
+              className="grid grid-cols-3 gap-1.5 p-1 rounded-xl border flex-1"
               style={{
-                borderColor: searchTarget === 'all' ? theme.accent : 'transparent',
-                backgroundColor:
+                backgroundColor: 'transparent',
+                borderColor: hexToRgba(theme.text, 0.08),
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setSearchTarget('all')}
+                className={`py-1.5 px-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
                   searchTarget === 'all'
-                    ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
-                    : 'transparent',
-                color: searchTarget === 'all' ? theme.accent : theme.text,
-              }}
-              title={isTasksMode ? 'По названию группы и тексту задач' : 'По названию и тексту'}
-            >
-              Все
-            </button>
+                    ? 'border-solid shadow-xs'
+                    : 'border-transparent opacity-65 hover:opacity-100'
+                }`}
+                style={{
+                  borderColor: searchTarget === 'all' ? theme.accent : 'transparent',
+                  backgroundColor:
+                    searchTarget === 'all'
+                      ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
+                      : 'transparent',
+                  color: searchTarget === 'all' ? theme.accent : theme.text,
+                }}
+                title={isTasksMode ? 'По названию группы и тексту задач' : 'По названию и тексту'}
+              >
+                Все
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setSearchTarget('title')}
-              className={`py-1.5 px-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
-                searchTarget === 'title'
-                  ? 'border-solid shadow-xs'
-                  : 'border-transparent opacity-65 hover:opacity-100'
-              }`}
-              style={{
-                borderColor: searchTarget === 'title' ? theme.accent : 'transparent',
-                backgroundColor:
+              <button
+                type="button"
+                onClick={() => setSearchTarget('title')}
+                className={`py-1.5 px-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
                   searchTarget === 'title'
-                    ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
-                    : 'transparent',
-                color: searchTarget === 'title' ? theme.accent : theme.text,
-              }}
-              title={isTasksMode ? 'По названию группы' : 'Только по названию'}
-            >
-              Название
-            </button>
+                    ? 'border-solid shadow-xs'
+                    : 'border-transparent opacity-65 hover:opacity-100'
+                }`}
+                style={{
+                  borderColor: searchTarget === 'title' ? theme.accent : 'transparent',
+                  backgroundColor:
+                    searchTarget === 'title'
+                      ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
+                      : 'transparent',
+                  color: searchTarget === 'title' ? theme.accent : theme.text,
+                }}
+                title={isTasksMode ? 'По названию группы' : 'Только по названию'}
+              >
+                Название
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setSearchTarget('content')}
-              className={`py-1.5 px-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
-                searchTarget === 'content'
-                  ? 'border-solid shadow-xs'
-                  : 'border-transparent opacity-65 hover:opacity-100'
-              }`}
-              style={{
-                borderColor: searchTarget === 'content' ? theme.accent : 'transparent',
-                backgroundColor:
+              <button
+                type="button"
+                onClick={() => setSearchTarget('content')}
+                className={`py-1.5 px-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all text-center cursor-pointer select-none truncate min-w-0 border ${
                   searchTarget === 'content'
-                    ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
-                    : 'transparent',
-                color: searchTarget === 'content' ? theme.accent : theme.text,
-              }}
-              title={isTasksMode ? 'По тексту задач' : 'Только по тексту заметки'}
-            >
-              {isTasksMode ? 'Задачи' : 'Текст'}
-            </button>
+                    ? 'border-solid shadow-xs'
+                    : 'border-transparent opacity-65 hover:opacity-100'
+                }`}
+                style={{
+                  borderColor: searchTarget === 'content' ? theme.accent : 'transparent',
+                  backgroundColor:
+                    searchTarget === 'content'
+                      ? hexToRgba(theme.accent, isLight ? 0.14 : 0.18)
+                      : 'transparent',
+                  color: searchTarget === 'content' ? theme.accent : theme.text,
+                }}
+                title={isTasksMode ? 'По тексту задач' : 'Только по тексту заметки'}
+              >
+                {isTasksMode ? 'Задачи' : 'Текст'}
+              </button>
+            </div>
+
+            {!isTasksMode && semanticSearchSettings.enabled && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (semanticSearchSettings.triggerMode === 'manual') {
+                    setIsSemanticSearchActive(!isSemanticSearchActive);
+                  }
+                }}
+                className={`p-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1 shrink-0 ${
+                  semanticSearchSettings.triggerMode === 'auto' || isSemanticSearchActive
+                    ? 'shadow-xs cursor-pointer'
+                    : 'opacity-65 hover:opacity-100 cursor-pointer'
+                }`}
+                style={{
+                  backgroundColor:
+                    semanticSearchSettings.triggerMode === 'auto' || isSemanticSearchActive
+                      ? hexToRgba(theme.accent, 0.2)
+                      : hexToRgba(theme.text, 0.03),
+                  borderColor:
+                    semanticSearchSettings.triggerMode === 'auto' || isSemanticSearchActive
+                      ? theme.accent
+                      : hexToRgba(theme.text, 0.08),
+                  color:
+                    semanticSearchSettings.triggerMode === 'auto' || isSemanticSearchActive
+                      ? theme.accent
+                      : theme.text,
+                }}
+                title={
+                  semanticSearchSettings.triggerMode === 'manual'
+                    ? isSemanticSearchActive
+                    ? 'Семантический поиск активен (нажмите для выключения)'
+                    : 'Включить поиск по смыслу'
+                  : 'Семантический поиск работает автоматически'
+                }
+              >
+                <FileSearch size={14} style={{ color: theme.accent }} />
+                <span className="text-[11px] font-mono hidden sm:inline">Смысл</span>
+              </button>
+            )}
           </div>
 
           {/* Live search match counter */}
@@ -311,13 +357,9 @@ export const TagSearchModal: React.FC = () => {
 
       {/* Tags Section Header (Hidden in Private Mode) */}
       {viewMode !== 'private' && (
-        <div
-          className={!isPinnedOnHome ? 'pt-2 border-t' : ''}
-          style={{ borderColor: hexToRgba(theme.text, 0.08) }}
-        >
+        <div className="pt-0.5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold flex items-center gap-1.5 opacity-75">
-              <TagIcon size={12} style={{ color: theme.accent }} />
+            <span className="text-xs font-bold opacity-75">
               <span>Теги</span>
             </span>
 
@@ -325,11 +367,11 @@ export const TagSearchModal: React.FC = () => {
               <button
                 type="button"
                 onClick={handleStartCreateTag}
-                className="p-1 rounded-lg border flex items-center justify-center opacity-80 hover:opacity-100 transition cursor-pointer"
+                className="p-1 rounded-lg border flex items-center justify-center opacity-65 hover:opacity-100 transition cursor-pointer"
                 style={{
-                  backgroundColor: hexToRgba(theme.accent, 0.15),
-                  borderColor: hexToRgba(theme.accent, 0.3),
-                  color: theme.accent,
+                  backgroundColor: hexToRgba(theme.text, 0.04),
+                  borderColor: hexToRgba(theme.text, 0.12),
+                  color: theme.text,
                 }}
                 title="Создать новый тег"
               >
@@ -348,9 +390,8 @@ export const TagSearchModal: React.FC = () => {
               }}
             >
               <div className="flex items-center justify-between text-xs font-bold">
-                <span className="flex items-center gap-1.5">
-                  <TagIcon size={12} style={{ color: tagColorInput }} />
-                  <span>{editingTagId ? 'Настройка тега' : 'Новый тег'}</span>
+                <span>
+                  {editingTagId ? 'Настройка тега' : 'Новый тег'}
                 </span>
                 <button
                   type="button"
@@ -385,10 +426,7 @@ export const TagSearchModal: React.FC = () => {
                 label="Цвет тега"
               />
 
-              <div
-                className="flex items-center justify-end gap-2 pt-1 border-t"
-                style={{ borderColor: hexToRgba(theme.text, 0.08) }}
-              >
+              <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -417,7 +455,7 @@ export const TagSearchModal: React.FC = () => {
           )}
 
           {/* Tag List */}
-          <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
+          <div className="space-y-1 max-h-36 overflow-y-auto">
             {selectedTagFilter && (
               <button
                 onClick={() => {
@@ -487,11 +525,8 @@ export const TagSearchModal: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Isolated delete button on the right */}
-                  <div
-                    className="flex items-center pl-1.5 border-l shrink-0"
-                    style={{ borderColor: hexToRgba(theme.text, 0.1) }}
-                  >
+                  {/* Delete button on the right */}
+                  <div className="flex items-center shrink-0">
                     <button
                       type="button"
                       onClick={e => {
@@ -504,7 +539,7 @@ export const TagSearchModal: React.FC = () => {
                       title="Удалить тег"
                       className="p-1 rounded-md opacity-40 group-hover:opacity-70 hover:!opacity-100 hover:bg-red-500/20 hover:text-red-400 transition cursor-pointer"
                     >
-                      <Trash2 size={11} />
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 </div>
@@ -543,12 +578,12 @@ export const TagSearchModal: React.FC = () => {
   // Task Sorting / Display Filter Options Card - Outline style only
   const renderTaskSortCard = () => (
     <div
-      className="w-full rounded-2xl p-3.5 sm:p-4 shadow-2xl border transition-all space-y-2.5 shrink-0 overflow-hidden"
+      className="w-full rounded-2xl p-3.5 sm:p-4 shadow-xl border transition-all space-y-2.5 shrink-0 overflow-hidden"
       style={{
         backgroundColor: cardBg,
         color: theme.text,
         borderColor: hexToRgba(theme.text, 0.15),
-        boxShadow: `0 20px 40px ${isLight ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.5)'}`,
+        boxShadow: isLight ? '0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.04)' : '0 20px 25px -5px rgba(0,0,0,0.4)',
       }}
       onClick={e => e.stopPropagation()}
     >
@@ -598,7 +633,7 @@ export const TagSearchModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-end p-3 sm:p-6 backdrop-blur-xs overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-end p-3 sm:p-6 backdrop-blur-xs overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
       onClick={e => {
         if (e.target === e.currentTarget) {
@@ -607,7 +642,7 @@ export const TagSearchModal: React.FC = () => {
       }}
     >
       <div
-        className={`flex flex-col gap-2.5 w-full max-w-xs sm:w-80 transition-transform duration-200 ease-out max-h-[calc(100vh-3rem)] overflow-y-auto pr-0.5 ${
+        className={`flex flex-col gap-2.5 w-full max-w-xs sm:w-80 transition-transform duration-200 ease-out max-h-[calc(100vh-3rem)] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
           isSearchFocused ? '-translate-y-16 sm:translate-y-0' : 'translate-y-0'
         }`}
         onClick={e => e.stopPropagation()}

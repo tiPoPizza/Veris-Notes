@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useApp, COHERE_MODELS, IONET_MODELS } from '../context/AppContext';
 import { getTranslation } from '../i18n';
 import { THEME_CATEGORIES, isLightColor, hexToRgba } from '../themes';
 import { LanguageCode, SidebarTabId } from '../types';
@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   Check,
   RefreshCw,
+  RotateCcw,
   Download,
   Upload,
   FileText,
@@ -22,6 +23,7 @@ import {
   ArrowUp,
   ArrowDown,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   AlertTriangle,
   X,
@@ -38,10 +40,53 @@ import {
   Eye,
   EyeOff,
   Compass,
+  Zap,
+  Bot,
+  Heart,
+  Moon,
+  Bell,
+  Cpu,
+  FileSearch,
+  Trash2,
+  WifiOff,
+  BatteryMedium,
+  Layers,
+  Search,
+  Scissors,
+  Copy,
+  AlignLeft,
+  Quote,
+  Code,
+  Highlighter,
+  Files,
+  FolderArchive,
+  Archive,
+  Edit2,
+  Plus,
+  CopyPlus,
+  ArrowUpDown,
+  Tag as TagIcon,
 } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
+import { CustomTimePicker } from './CustomTimePicker';
 import { PinModal, PinModalMode } from './PinModal';
 import { FONT_FAMILY_OPTIONS } from '../utils/fonts';
+import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS, NoteTileActionId, ALL_NOTE_TILE_ACTIONS } from '../types';
+import {
+  ThemeRegistryModal,
+  ThemeFilters,
+  DEFAULT_THEME_FILTERS,
+  matchThemeWithFilters,
+} from './ThemeRegistryModal';
+import { ThemeSchedulerModal } from './ThemeSchedulerModal';
+import { Clock } from 'lucide-react';
+import {
+  HF_SEMANTIC_MODELS,
+  semanticSearchService,
+  ModelDownloadProgress,
+} from '../services/semanticSearch';
+import { stripHtmlTags } from '../utils/textUtils';
+import { createSettingsTranslator } from '../utils/settingsTranslations';
 
 const LINE_HEIGHT_OPTIONS = [
   { value: 1.2, label: '1.2' },
@@ -57,6 +102,49 @@ const TILE_DISPLAY_OPTIONS = [
   { value: 'content', label: 'Текст' },
 ];
 
+const TRASH_RETENTION_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 7, label: '7 дней' },
+  { value: 15, label: '15 дней' },
+  { value: 30, label: '30 дней' },
+  { value: 90, label: '90 дней' },
+  { value: 0, label: 'Никогда' },
+];
+
+const FORMATTING_BUTTON_OPTIONS: Array<{
+  id: FormattingToolbarButtonId;
+  label: string;
+  desc: string;
+  letter?: string;
+  letterClass?: string;
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
+}> = [
+  { id: 'cut', label: 'Вырезать', desc: 'Копировать и удалить выделенный текст', icon: Scissors },
+  { id: 'copy', label: 'Копировать', desc: 'Копировать выделенный текст в буфер обмена', icon: Copy },
+  { id: 'bold', label: 'Жирный (B)', desc: 'Выделение полужирным начертанием', letter: 'B', letterClass: 'font-black' },
+  { id: 'italic', label: 'Курсив (I)', desc: 'Выделение курсивным начертанием', letter: 'I', letterClass: 'italic font-bold' },
+  { id: 'underline', label: 'Подчёркнутый (U)', desc: 'Нижнее подчёркивание текста', letter: 'U', letterClass: 'underline font-bold' },
+  { id: 'align', label: 'Выравнивание', desc: 'Выравнивание по левому краю, по центру или справа', icon: AlignLeft },
+  { id: 'heading', label: 'Заголовки (H)', desc: 'Уровни заголовков H1–H4 и обычный текст', letter: 'H', letterClass: 'font-bold' },
+  { id: 'quote', label: 'Цитата', desc: 'Оформление текста блоком цитаты', icon: Quote },
+  { id: 'code', label: 'Код', desc: 'Оформление моноширинным фрагментом кода', icon: Code },
+  { id: 'color', label: 'Выделение цветом', desc: 'Палитра цветного маркера для текста', icon: Highlighter },
+];
+
+const NOTE_TILE_ACTION_OPTIONS: Array<{
+  id: NoteTileActionId;
+  label: string;
+  desc: string;
+  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
+}> = [
+  { id: 'reorder', label: 'Вверх / Вниз', desc: 'Кнопки ручного перемещения порядка заметки', icon: ArrowUpDown },
+  { id: 'pin', label: 'Закрепить', desc: 'Закрепление заметки вверху списка', icon: Pin },
+  { id: 'duplicate', label: 'Дублировать', desc: 'Быстрое создание копии заметки', icon: CopyPlus },
+  { id: 'block', label: 'В блок', desc: 'Перемещение заметки в блок', icon: Layers },
+  { id: 'tag', label: 'Добавить тег', desc: 'Прикрепление и создание категорий-тегов', icon: TagIcon },
+  { id: 'export', label: 'Экспорт', desc: 'Экспорт заметки в файл (TXT, MD, PDF)', icon: Download },
+  { id: 'delete', label: 'Корзина', desc: 'Удаление заметки в корзину', icon: Trash2 },
+];
+
 export const SettingsPage: React.FC = () => {
   const {
     theme,
@@ -69,6 +157,10 @@ export const SettingsPage: React.FC = () => {
     setQuickSettings,
     webSearchSettings,
     setWebSearchSettings,
+    anacrusaSettings,
+    setAnacrusaSettings,
+    semanticSearchSettings,
+    setSemanticSearchSettings,
     notes,
     taskLists,
     resetAllData,
@@ -76,13 +168,43 @@ export const SettingsPage: React.FC = () => {
     activeSettingsTab,
     setActiveSettingsTab,
     openExportModal,
+    openBatchExportModal,
     appPin,
     lockApp,
     privatePin,
     lockPrivateSpace,
     resetPrivateSpace,
     isPrivateLocked,
+    triggerBedtimeReminderTest,
+    workspacesEnabled,
+    setWorkspacesEnabled,
+    workspaces,
+    activeWorkspaceId,
+    switchWorkspace,
+    createWorkspace,
+    renameWorkspace,
+    deleteWorkspace,
+    moveNoteToWorkspace,
+    moveNotesToWorkspace,
+    setIsWorkspaceModalOpen,
+    trashRetentionDays,
+    setTrashRetentionDays,
+    themeSchedule,
   } = useApp();
+
+  const [isThemeSchedulerOpen, setIsThemeSchedulerOpen] = useState(false);
+  const [transferTargetWsId, setTransferTargetWsId] = useState<string>('');
+  const [transferSelectedNoteIds, setTransferSelectedNoteIds] = useState<string[]>([]);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [isTransferNoteSelectOpen, setIsTransferNoteSelectOpen] = useState(false);
+  const [isTransferWsSelectOpen, setIsTransferWsSelectOpen] = useState(false);
+  const [transferNoteSearch, setTransferNoteSearch] = useState('');
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<string | null>(null);
+  const [editingWorkspaceName, setEditingWorkspaceName] = useState('');
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const transferNoteDropdownRef = useRef<HTMLDivElement>(null);
+  const transferWsDropdownRef = useRef<HTMLDivElement>(null);
 
   const [pinModalMode, setPinModalMode] = useState<PinModalMode | null>(null);
   const [pinModalTarget, setPinModalTarget] = useState<'app' | 'private'>('app');
@@ -91,6 +213,165 @@ export const SettingsPage: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [importNotice, setImportNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showTavilyKey, setShowTavilyKey] = useState(false);
+  const [showExaKey, setShowExaKey] = useState(false);
+  const [showCohereKey, setShowCohereKey] = useState(false);
+  const [showIonetKey, setShowIonetKey] = useState(false);
+  const [showCustomIonetModel, setShowCustomIonetModel] = useState(false);
+  const [isAiModelDropdownOpen, setIsAiModelDropdownOpen] = useState(false);
+  const [isThemeRegistryOpen, setIsThemeRegistryOpen] = useState(false);
+  const [themeFilters, setThemeFilters] = useState<ThemeFilters>(DEFAULT_THEME_FILTERS);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Collapsible cards in Editor tab (all initially false / collapsed as requested)
+  const [isWorkspacesOpen, setIsWorkspacesOpen] = useState(false);
+  const [isLaunchScreenOpen, setIsLaunchScreenOpen] = useState(false);
+  const [isTypographyOpen, setIsTypographyOpen] = useState(false);
+  const [isNoteDisplayOpen, setIsNoteDisplayOpen] = useState(false);
+  const [isFormattingButtonsOpen, setIsFormattingButtonsOpen] = useState(false);
+  const [isNoteActionButtonsOpen, setIsNoteActionButtonsOpen] = useState(false);
+
+  const tr = useMemo(() => createSettingsTranslator(language), [language]);
+
+  const formattingButtonOptions = useMemo(() => {
+    return FORMATTING_BUTTON_OPTIONS.map(opt => ({
+      ...opt,
+      label: tr(opt.label),
+      desc: tr(opt.desc),
+    }));
+  }, [tr]);
+
+  const noteTileActionOptions = useMemo(() => {
+    return NOTE_TILE_ACTION_OPTIONS.map(opt => ({
+      ...opt,
+      label: tr(opt.label),
+      desc: tr(opt.desc),
+    }));
+  }, [tr]);
+
+  const tileDisplayOptions = useMemo(() => {
+    return TILE_DISPLAY_OPTIONS.map(opt => ({
+      ...opt,
+      label: tr(opt.label),
+    }));
+  }, [tr]);
+
+  const trashRetentionOptions = useMemo(() => {
+    return TRASH_RETENTION_OPTIONS.map(opt => ({
+      ...opt,
+      label: tr(opt.label),
+    }));
+  }, [tr]);
+
+  // Semantic Search Local State
+  const [cachedModels, setCachedModels] = useState<Record<string, boolean>>({});
+  const [downloadingRepo, setDownloadingRepo] = useState<string | null>(null);
+  const [modelProgress, setModelProgress] = useState<ModelDownloadProgress>({ status: 'idle', progress: 0 });
+  const [indexedNotesCount, setIndexedNotesCount] = useState<number>(0);
+  const [isReindexing, setIsReindexing] = useState<boolean>(false);
+  const [reindexMessage, setReindexMessage] = useState<string | null>(null);
+
+  // Subscribe to progress and check cached models
+  useEffect(() => {
+    const unsub = semanticSearchService.subscribeProgress(progress => {
+      setModelProgress(progress);
+      if (progress.status === 'ready' || progress.status === 'error') {
+        setDownloadingRepo(null);
+      }
+    });
+
+    const checkCaches = async () => {
+      const results: Record<string, boolean> = {};
+      for (const m of HF_SEMANTIC_MODELS) {
+        results[m.repo] = await semanticSearchService.isModelCached(m.repo);
+      }
+      setCachedModels(results);
+
+      const count = await semanticSearchService.getIndexedCount(semanticSearchSettings.modelRepo);
+      setIndexedNotesCount(count);
+    };
+
+    checkCaches();
+    return () => unsub();
+  }, [semanticSearchSettings.modelRepo]);
+
+  const handleDownloadModel = async (repo: string) => {
+    setDownloadingRepo(repo);
+    const success = await semanticSearchService.loadModel(repo);
+    if (success) {
+      setCachedModels(prev => ({ ...prev, [repo]: true }));
+      setSemanticSearchSettings(prev => ({
+        ...prev,
+        modelRepo: repo,
+        enabled: true,
+      }));
+      const count = await semanticSearchService.getIndexedCount(repo);
+      setIndexedNotesCount(count);
+    }
+  };
+
+  const handleDeleteModel = async (repo: string) => {
+    const ok = await semanticSearchService.deleteCachedModel(repo);
+    if (ok) {
+      setCachedModels(prev => ({ ...prev, [repo]: false }));
+      const count = await semanticSearchService.getIndexedCount(repo);
+      setIndexedNotesCount(count);
+    }
+  };
+
+  const handleReindexNotes = async () => {
+    const activeRepo = semanticSearchSettings.modelRepo;
+    setIsReindexing(true);
+    setReindexMessage(null);
+    try {
+      // Ensure model is loaded
+      await semanticSearchService.loadModel(activeRepo);
+      // Index all non-private notes
+      const notesToIndex = notes.filter(n => !n.isPrivate);
+      let count = 0;
+      for (const note of notesToIndex) {
+        const text = `${note.title || ''}\n${stripHtmlTags(note.content || '')}`.trim();
+        if (text) {
+          await semanticSearchService.getEmbedding(text, activeRepo);
+          count++;
+        }
+      }
+      const finalCount = await semanticSearchService.getIndexedCount(activeRepo);
+      setIndexedNotesCount(finalCount);
+      setReindexMessage(`Успешно проиндексировано ${count} заметок`);
+      setTimeout(() => setReindexMessage(null), 4000);
+    } catch (err: any) {
+      setReindexMessage(`Ошибка индексации: ${err?.message || 'Сбой'}`);
+    } finally {
+      setIsReindexing(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setIsAiModelDropdownOpen(false);
+      }
+      if (transferNoteDropdownRef.current && !transferNoteDropdownRef.current.contains(event.target as Node)) {
+        setIsTransferNoteSelectOpen(false);
+      }
+      if (transferWsDropdownRef.current && !transferWsDropdownRef.current.contains(event.target as Node)) {
+        setIsTransferWsSelectOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredTransferNotes = useMemo(() => {
+    if (!transferNoteSearch.trim()) return notes;
+    const q = transferNoteSearch.toLowerCase();
+    return notes.filter(n => {
+      const title = (n.title || '').toLowerCase();
+      const content = (n.content || '').toLowerCase();
+      const tags = (n.tags || []).join(' ').toLowerCase();
+      return title.includes(q) || content.includes(q) || tags.includes(q);
+    });
+  }, [notes, transferNoteSearch]);
 
   const t = (key: string) => getTranslation(language, key);
   const isLight = isLightColor(theme.bg);
@@ -144,14 +425,16 @@ export const SettingsPage: React.FC = () => {
   const cardBorder = hexToRgba(theme.text, 0.12);
 
   const categories = [
-    { id: 'themes', title: t('themes'), icon: <Palette size={18} /> },
-    { id: 'customization', title: t('customization') || 'Кастомизация', icon: <SlidersHorizontal size={18} /> },
-    { id: 'editor', title: t('editor'), icon: <Edit3 size={18} /> },
-    { id: 'language', title: t('language'), icon: <Globe size={18} /> },
-    { id: 'security', title: t('security'), icon: <Lock size={18} /> },
-    { id: 'data', title: t('data'), icon: <Database size={18} /> },
-    { id: 'ai', title: t('aiUsage'), icon: <Sparkles size={18} /> },
-    { id: 'other', title: t('other'), icon: <MoreHorizontal size={18} /> },
+    { id: 'themes', title: tr('Темы'), icon: <Palette size={18} /> },
+    { id: 'customization', title: tr('Кастомизация'), icon: <SlidersHorizontal size={18} /> },
+    { id: 'editor', title: tr('Редактор'), icon: <Edit3 size={18} /> },
+    { id: 'wellbeing', title: tr('Благополучие'), icon: <Heart size={18} /> },
+    { id: 'language', title: tr('Язык'), icon: <Globe size={18} /> },
+    { id: 'security', title: tr('Безопасность'), icon: <Lock size={18} /> },
+    { id: 'data', title: tr('Данные'), icon: <Database size={18} /> },
+    { id: 'ai', title: tr('ИИ'), icon: <Sparkles size={18} /> },
+    { id: 'search', title: tr('Поиск'), icon: <Search size={18} /> },
+    { id: 'other', title: tr('Другое'), icon: <MoreHorizontal size={18} /> },
   ];
 
   // If no category selected, render Category List
@@ -160,7 +443,7 @@ export const SettingsPage: React.FC = () => {
       <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 md:p-12">
         <div className="max-w-md mx-auto w-full pt-4 pb-12">
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-6 text-center">
-            {t('settings')}
+            {tr('Настройки')}
           </h1>
 
           <div className="space-y-2.5">
@@ -198,92 +481,144 @@ export const SettingsPage: React.FC = () => {
       <div className="max-w-2xl mx-auto w-full pt-4 pb-12">
         {/* Category Header */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-center mb-6">
-          {currentCategory?.title || t('settings')}
+          {currentCategory?.title || tr('Настройки')}
         </h1>
 
         {/* TAB: Themes */}
         {activeSettingsTab === 'themes' && (
-          <div className="space-y-6">
-            <div>
-              <p className="text-xs opacity-60">
-                Текущая тема: <span className="font-bold">{theme.name}</span> ({theme.category})
-              </p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setIsThemeRegistryOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold transition shadow-xs hover:shadow-md active:scale-98 cursor-pointer"
+                style={{
+                  backgroundColor: hexToRgba(theme.accent, 0.12),
+                  color: theme.accent,
+                  border: `1px solid ${hexToRgba(theme.accent, 0.25)}`,
+                }}
+              >
+                <span>{tr('Подобрать тему')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsThemeSchedulerOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold transition shadow-xs hover:shadow-md active:scale-98 cursor-pointer shrink-0"
+                style={{
+                  backgroundColor: themeSchedule?.enabled ? hexToRgba(theme.accent, 0.15) : hexToRgba(theme.text, 0.06),
+                  color: themeSchedule?.enabled ? theme.accent : theme.text,
+                  border: `1px solid ${themeSchedule?.enabled ? hexToRgba(theme.accent, 0.3) : hexToRgba(theme.text, 0.12)}`,
+                }}
+                title={tr('Настроить смену тем по времени (день / ночь)', 'Schedule theme changes by time (day / night)')}
+              >
+                <span>{tr('Смена тем', 'Theme Scheduler')}</span>
+                {themeSchedule?.enabled && (
+                  <span
+                    className="w-2 h-2 rounded-full animate-pulse shrink-0"
+                    style={{ backgroundColor: theme.accent }}
+                  />
+                )}
+              </button>
             </div>
 
-            {THEME_CATEGORIES.map(category => (
-              <div key={category.id} className="space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider opacity-60">
-                  • {category.name}
-                </h3>
+            {Object.entries(themeFilters).some(([_, v]) => Array.isArray(v) ? v.length > 0 : Boolean(v.trim())) && (
+              <div className="flex items-center justify-start animate-fadeIn">
+                <button
+                  type="button"
+                  onClick={() => setThemeFilters(DEFAULT_THEME_FILTERS)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold opacity-75 hover:opacity-100 transition cursor-pointer"
+                  style={{
+                    backgroundColor: hexToRgba(theme.text, 0.06),
+                    color: theme.text,
+                  }}
+                  title={tr('Сбросить фильтры', 'Reset filters')}
+                >
+                  <RotateCcw size={12} />
+                  <span>{tr('Сбросить фильтры', 'Reset filters')}</span>
+                </button>
+              </div>
+            )}
 
-                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-                  {category.themes.map(preset => {
-                    const isActive = theme.id === preset.id;
-                    return (
-                      <div
-                        key={preset.id}
-                        onClick={() => setTheme(preset)}
-                        className={`p-3 rounded-2xl border transition-all cursor-pointer relative shadow-xs hover:shadow-md ${
-                          isActive ? 'ring-2 shadow-lg' : 'hover:scale-[1.01]'
-                        }`}
-                        style={{
-                          backgroundColor: preset.bg,
-                          borderColor: isActive ? preset.accent : hexToRgba(preset.text, 0.2),
-                          color: preset.text,
-                        }}
-                      >
-                        {/* Mini Screen Header */}
-                        <div
-                          className="flex items-center justify-between pb-1.5 mb-2 border-b"
-                          style={{ borderColor: hexToRgba(preset.text, 0.15) }}
-                        >
-                          <span className="font-bold text-xs truncate">{preset.name}</span>
-                          {isActive && (
-                            <div
-                              className="w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0"
-                              style={{ backgroundColor: preset.accent }}
-                            >
-                              <Check size={10} />
-                            </div>
-                          )}
-                        </div>
+            {THEME_CATEGORIES.map(category => {
+              const matchingThemes = category.themes.filter(preset =>
+                matchThemeWithFilters(preset, themeFilters)
+              );
+              if (matchingThemes.length === 0) return null;
 
-                        {/* Mini Screen Body Preview */}
+              return (
+                <div key={category.id} className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider opacity-60 flex items-center gap-1.5">
+                    <span>{category.name}</span>
+                    <span className="opacity-40 font-normal">{matchingThemes.length}</span>
+                  </h3>
+
+                  <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                    {matchingThemes.map(preset => {
+                      const isActive = theme.id === preset.id;
+                      return (
                         <div
-                          className="p-2 rounded-xl border space-y-1"
+                          key={preset.id}
+                          onClick={() => setTheme(preset)}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer relative shadow-xs hover:shadow-md ${
+                            isActive ? 'ring-2 shadow-lg' : 'hover:scale-[1.01]'
+                          }`}
                           style={{
-                            backgroundColor: hexToRgba(preset.text, 0.04),
-                            borderColor: hexToRgba(preset.text, 0.1),
+                            backgroundColor: preset.bg,
+                            borderColor: isActive ? preset.accent : hexToRgba(preset.text, 0.2),
+                            color: preset.text,
                           }}
                         >
-                          <div className="font-bold text-[11px] opacity-90 truncate">
-                            Заголовок
+                          {/* Mini Screen Header */}
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-xs truncate">{preset.name}</span>
+                            {isActive && (
+                              <div
+                                className="w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0"
+                                style={{ backgroundColor: preset.accent }}
+                              >
+                                <Check size={10} />
+                              </div>
+                            )}
                           </div>
-                          <div className="text-[10px] opacity-70 leading-tight truncate">
-                            Текст заметки
-                          </div>
-                          <div className="pt-1 flex items-center justify-between">
-                            <span
-                              className="px-1.5 py-0.5 rounded-md text-[9px] font-bold"
-                              style={{
-                                backgroundColor: hexToRgba(preset.accent, 0.2),
-                                color: preset.accent,
-                              }}
-                            >
-                              Акцент
-                            </span>
-                            <div
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: preset.accent }}
-                            />
+
+                          {/* Mini Screen Body Preview */}
+                          <div
+                            className="p-2 rounded-xl border space-y-1"
+                            style={{
+                              backgroundColor: hexToRgba(preset.text, 0.04),
+                              borderColor: hexToRgba(preset.text, 0.1),
+                            }}
+                          >
+                            <div className="font-bold text-[11px] opacity-90 truncate">
+                              Заголовок
+                            </div>
+                            <div className="text-[10px] opacity-70 leading-tight truncate">
+                              Текст заметки
+                            </div>
+                            <div className="pt-1 flex items-center justify-between">
+                              <span
+                                className="px-1.5 py-0.5 rounded-md text-[9px] font-bold"
+                                style={{
+                                  backgroundColor: hexToRgba(preset.accent, 0.2),
+                                  color: preset.accent,
+                                }}
+                              >
+                                Акцент
+                              </span>
+                              <div
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: preset.accent }}
+                              />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -322,9 +657,9 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => setQuickSettings(prev => ({ ...prev, horizontalMainMenu: !prev.horizontalMainMenu }))}
               >
                 <div className="flex-1 pr-4">
-                  <div>Горизонтальное главное меню</div>
+                  <div>{tr('Горизонтальное главное меню')}</div>
                   <div className="text-[10px] opacity-50 font-normal mt-0.5">
-                    Располагать блоки заметок и задач горизонтально (слева направо)
+                    {tr('Располагать блоки заметок и задач горизонтально (слева направо)')}
                   </div>
                 </div>
                 <div
@@ -346,8 +681,8 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => setQuickSettings(prev => ({ ...prev, showBorder: !prev.showBorder }))}
               >
                 <div className="flex-1 pr-4">
-                  <div>Обводка панелей</div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5">Отображать тонкую рамку вокруг боковой панели, редактора и плиток</div>
+                  <div>{tr('Обводка панелей')}</div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать тонкую рамку вокруг боковой панели, редактора и плиток')}</div>
                 </div>
                 <div
                   className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -368,8 +703,8 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => setQuickSettings(prev => ({ ...prev, showTileMetadata: !prev.showTileMetadata }))}
               >
                 <div className="flex-1 pr-4">
-                  <div>Метаданные на плитках</div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5">Отображать дату и время обновления на карточках заметок и задач</div>
+                  <div>{tr('Метаданные на плитках')}</div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать дату и время обновления на карточках заметок и задач')}</div>
                 </div>
                 <div
                   className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -390,8 +725,8 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => setQuickSettings(prev => ({ ...prev, hideTileDots: !prev.hideTileDots }))}
               >
                 <div className="flex-1 pr-4">
-                  <div>Скрыть 3 точки на плитках</div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5">Меню действий будет вызываться через зажатие плитки</div>
+                  <div>{tr('Скрыть 3 точки на плитках')}</div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Меню действий будет вызываться через зажатие плитки')}</div>
                 </div>
                 <div
                   className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -412,8 +747,8 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => setQuickSettings(prev => ({ ...prev, pinSearchToHomeScreen: !prev.pinSearchToHomeScreen }))}
               >
                 <div className="flex-1 pr-4">
-                  <div>Панель поиска на главном экране</div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5">Закрепить панель поиска между оглавлением и списком заметок/задач</div>
+                  <div>{tr('Панель поиска на главном экране')}</div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Закрепить панель поиска между оглавлением и списком заметок/задач')}</div>
                 </div>
                 <div
                   className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -427,17 +762,39 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Uppercase block names toggle */}
+              <div
+                className="flex items-center justify-between text-xs font-semibold pt-3 border-t cursor-pointer gap-4"
+                style={{ borderColor: cardBorder }}
+                onClick={() => setQuickSettings(prev => ({ ...prev, uppercaseBlockNames: !prev.uppercaseBlockNames }))}
+              >
+                <div className="flex-1 pr-4">
+                  <div>{tr('Названия блоков ЗАГЛАВНЫМИ')}</div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать заголовки блоков капсом или в обычном регистре')}</div>
+                </div>
+                <div
+                  className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                    quickSettings.uppercaseBlockNames ? 'justify-end' : 'justify-start'
+                  }`}
+                  style={{
+                    backgroundColor: quickSettings.uppercaseBlockNames ? theme.accent : hexToRgba(theme.text, 0.2),
+                  }}
+                >
+                  <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                </div>
+              </div>
+
               {/* Tile Display Mode (Отображение плиток) */}
               <div className="flex flex-wrap sm:flex-nowrap items-center justify-between text-xs font-semibold pt-3 border-t gap-3" style={{ borderColor: cardBorder }}>
                 <div className="flex-1 min-w-[140px] pr-2">
-                  <div>Отображение плиток</div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5">Выберите, что показывать на карточках заметок</div>
+                  <div>{tr('Отображение плиток')}</div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Выберите, что показывать на карточках заметок')}</div>
                 </div>
                 <div className="shrink-0">
                   <CustomSelect
                     value={quickSettings.tileDisplayMode || 'both'}
-                    onChange={val => setQuickSettings(prev => ({ ...prev, tileDisplayMode: val }))}
-                    options={TILE_DISPLAY_OPTIONS}
+                    onChange={val => setQuickSettings(prev => ({ ...prev, tileDisplayMode: val as any }))}
+                    options={tileDisplayOptions}
                   />
                 </div>
               </div>
@@ -445,19 +802,19 @@ export const SettingsPage: React.FC = () => {
               {/* Sidebar Tabs Display & Sequence (Вкладки бокового меню: Заметки / Задачи / Канбан / Календарь) */}
               <div className="pt-4 border-t space-y-3" style={{ borderColor: cardBorder }}>
                 <div>
-                  <div className="text-xs font-bold">Вкладки бокового меню</div>
+                  <div className="text-xs font-bold">{tr('Вкладки бокового меню')}</div>
                   <div className="text-[10px] opacity-50 font-normal mt-0.5">
-                    Выберите отображаемые вкладки и настройте их последовательность стрелками. Отключенные вкладки будут доступны через меню «...»
+                    {tr('Выберите отображаемые вкладки и настройте их последовательность стрелками. Отключенные вкладки будут доступны через меню «...»')}
                   </div>
                 </div>
 
                 {(() => {
                   const ALL_TABS: { id: SidebarTabId; label: string; icon: React.ReactNode }[] = [
-                    { id: 'notes', label: 'Заметки', icon: <FileText size={14} /> },
-                    { id: 'tasks', label: 'Задачи', icon: <CheckSquare size={14} /> },
-                    { id: 'kanban', label: 'Канбан', icon: <Columns3 size={14} /> },
-                    { id: 'calendar', label: 'Календарь', icon: <CalendarIcon size={14} /> },
-                    { id: 'private', label: 'Приват', icon: <Shield size={14} /> },
+                    { id: 'notes', label: tr('Заметки'), icon: <FileText size={14} /> },
+                    { id: 'tasks', label: tr('Задачи'), icon: <CheckSquare size={14} /> },
+                    { id: 'kanban', label: tr('Канбан'), icon: <Columns3 size={14} /> },
+                    { id: 'calendar', label: tr('Календарь'), icon: <CalendarIcon size={14} /> },
+                    { id: 'private', label: tr('Приват'), icon: <Shield size={14} /> },
                   ];
 
                   const currentActiveTabs: SidebarTabId[] =
@@ -587,19 +944,11 @@ export const SettingsPage: React.FC = () => {
             <div className="p-5 rounded-3xl border space-y-4" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3.5">
-                  <div
-                    className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm"
-                    style={{
-                      backgroundColor: hexToRgba(theme.accent, isLight ? 0.12 : 0.18),
-                      color: theme.accent,
-                    }}
-                  >
-                    <KeyRound size={22} strokeWidth={2.2} />
-                  </div>
+                  <KeyRound size={24} strokeWidth={2.2} style={{ color: theme.accent }} className="shrink-0" />
                   <div>
-                    <div className="text-sm font-bold tracking-tight">Пин-код на вход</div>
+                    <div className="text-sm font-bold tracking-tight">{tr('Пин-код на вход')}</div>
                     <div className="text-xs opacity-50 mt-0.5">
-                      {appPin ? 'Защита активна (от 1 до 12 цифр)' : 'Блокировка при входе выключена'}
+                      {appPin ? tr('Защита активна (от 1 до 12 цифр)') : tr('Блокировка при входе выключена')}
                     </div>
                   </div>
                 </div>
@@ -611,12 +960,12 @@ export const SettingsPage: React.FC = () => {
                     color: appPin ? theme.accent : hexToRgba(theme.text, 0.6),
                   }}
                 >
-                  {appPin ? 'Включен' : 'Выключено'}
+                  {appPin ? tr('Включен') : tr('Выключено')}
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="pt-2 border-t flex flex-col sm:flex-row gap-2.5" style={{ borderColor: cardBorder }}>
+              <div className="pt-1 flex flex-col sm:flex-row gap-2.5">
                 {!appPin ? (
                   <button
                     type="button"
@@ -631,7 +980,7 @@ export const SettingsPage: React.FC = () => {
                     }}
                   >
                     <Lock size={15} />
-                    <span>Установить пин-код</span>
+                    <span>{tr('Установить пин-код')}</span>
                   </button>
                 ) : (
                   <>
@@ -648,7 +997,7 @@ export const SettingsPage: React.FC = () => {
                         color: theme.text,
                       }}
                     >
-                      <span>Изменить пин-код</span>
+                      <span>{tr('Изменить пин-код')}</span>
                     </button>
                     <button
                       type="button"
@@ -661,7 +1010,7 @@ export const SettingsPage: React.FC = () => {
                         borderColor: hexToRgba('#EF4444', 0.25),
                       }}
                     >
-                      <span>Отключить</span>
+                      <span>{tr('Отключить')}</span>
                     </button>
                   </>
                 )}
@@ -672,7 +1021,7 @@ export const SettingsPage: React.FC = () => {
             {appPin && (
               <div className="p-4 rounded-3xl border flex items-center justify-between" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
                 <div className="text-xs font-semibold opacity-75">
-                  Заблокировать экран сейчас
+                  {tr('Заблокировать экран сейчас')}
                 </div>
                 <button
                   type="button"
@@ -681,7 +1030,7 @@ export const SettingsPage: React.FC = () => {
                   style={{ borderColor: cardBorder, color: theme.text }}
                 >
                   <Lock size={13} />
-                  <span>Заблокировать</span>
+                  <span>{tr('Заблокировать')}</span>
                 </button>
               </div>
             )}
@@ -690,19 +1039,11 @@ export const SettingsPage: React.FC = () => {
             <div className="p-5 rounded-3xl border space-y-4" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3.5">
-                  <div
-                    className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm"
-                    style={{
-                      backgroundColor: hexToRgba(theme.accent, isLight ? 0.12 : 0.18),
-                      color: theme.accent,
-                    }}
-                  >
-                    <Shield size={22} strokeWidth={2.2} />
-                  </div>
+                  <Shield size={24} strokeWidth={2.2} style={{ color: theme.accent }} className="shrink-0" />
                   <div>
-                    <div className="text-sm font-bold tracking-tight">Приватное пространство</div>
+                    <div className="text-sm font-bold tracking-tight">{tr('Приватное пространство')}</div>
                     <div className="text-xs opacity-50 mt-0.5">
-                      {privatePin ? 'Защищено отдельным пин-кодом (от 1 до 12 цифр)' : 'Отдельный скрытый раздел для конфиденциальных заметок'}
+                      {privatePin ? tr('Защищено отдельным пин-кодом (от 1 до 12 цифр)') : tr('Отдельный скрытый раздел для конфиденциальных заметок')}
                     </div>
                   </div>
                 </div>
@@ -714,12 +1055,12 @@ export const SettingsPage: React.FC = () => {
                     color: privatePin ? theme.accent : hexToRgba(theme.text, 0.6),
                   }}
                 >
-                  {privatePin ? 'Включено' : 'Выключено'}
+                  {privatePin ? tr('Включено') : tr('Выключено')}
                 </div>
               </div>
 
               {/* Private Space Actions */}
-              <div className="pt-2 border-t flex flex-col sm:flex-row gap-2.5" style={{ borderColor: cardBorder }}>
+              <div className="pt-1 flex flex-col sm:flex-row gap-2.5">
                 {!privatePin ? (
                   <button
                     type="button"
@@ -734,7 +1075,7 @@ export const SettingsPage: React.FC = () => {
                     }}
                   >
                     <Shield size={15} />
-                    <span>Настроить пин-код привата</span>
+                    <span>{tr('Настроить пин-код привата')}</span>
                   </button>
                 ) : (
                   <>
@@ -751,7 +1092,7 @@ export const SettingsPage: React.FC = () => {
                         color: theme.text,
                       }}
                     >
-                      <span>Изменить пин</span>
+                      <span>{tr('Изменить пин')}</span>
                     </button>
                     <button
                       type="button"
@@ -764,7 +1105,7 @@ export const SettingsPage: React.FC = () => {
                         borderColor: hexToRgba('#EF4444', 0.25),
                       }}
                     >
-                      <span>Отключить</span>
+                      <span>{tr('Отключить')}</span>
                     </button>
                   </>
                 )}
@@ -774,7 +1115,7 @@ export const SettingsPage: React.FC = () => {
               {privatePin && (
                 <div className="pt-2 border-t flex items-center justify-between" style={{ borderColor: hexToRgba(theme.text, 0.08) }}>
                   <div className="text-xs font-semibold opacity-75">
-                    Статус хранилища: {isPrivateLocked ? 'Заблокировано' : 'Разблокировано'}
+                    {tr('Статус хранилища: ')}{isPrivateLocked ? tr('Заблокировано') : tr('Разблокировано')}
                   </div>
                   {!isPrivateLocked && (
                     <button
@@ -784,7 +1125,7 @@ export const SettingsPage: React.FC = () => {
                       style={{ borderColor: cardBorder, color: theme.text }}
                     >
                       <Lock size={12} />
-                      <span>Заблокировать</span>
+                      <span>{tr('Заблокировать')}</span>
                     </button>
                   )}
                 </div>
@@ -796,101 +1137,1227 @@ export const SettingsPage: React.FC = () => {
         {/* TAB: Editor */}
         {activeSettingsTab === 'editor' && (
           <div className="space-y-4">
-            {/* Launch Screen Setting (Что открывать при запуске) */}
-            <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
-              <div className="text-xs font-bold opacity-80">Что открывать при запуске</div>
-              <div className="rounded-xl border overflow-hidden" style={{ borderColor: cardBorder }}>
-                {/* Option 1: Список заметок */}
-                <button
-                  onClick={() => setLaunchScreen('notes')}
-                  className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
-                  style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'notes' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
+            {/* Workspaces Setting (Раздельные воркспейсы) - Collapsible */}
+            <div className="p-5 rounded-2xl border transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <div
+                className="flex items-center justify-between cursor-pointer"
+                onClick={() => setWorkspacesEnabled(!workspacesEnabled)}
+              >
+                <div>
+                  <div className="text-sm font-bold">{tr('Раздельные воркспейсы')}</div>
+                  <div className="text-xs opacity-50 font-normal mt-0.5">
+                    {tr('Изолированные рабочие пространства')}
+                  </div>
+                </div>
+                <div
+                  className={`w-10 h-6 rounded-full p-1 transition-colors flex items-center shrink-0 ${
+                    workspacesEnabled ? 'justify-end' : 'justify-start'
+                  }`}
+                  style={{
+                    backgroundColor: workspacesEnabled ? theme.accent : hexToRgba(theme.text, 0.2),
+                  }}
                 >
-                  <div className="text-xs font-semibold">Список заметок</div>
-                  {launchScreen === 'notes' && <Check size={16} style={{ color: theme.accent }} />}
-                </button>
-
-                {/* Option 2: Последняя заметка */}
-                <button
-                  onClick={() => setLaunchScreen('editor')}
-                  className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
-                  style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'editor' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
-                >
-                  <div className="text-xs font-semibold">Последняя заметка</div>
-                  {launchScreen === 'editor' && <Check size={16} style={{ color: theme.accent }} />}
-                </button>
-
-                {/* Option 3: Список задач */}
-                <button
-                  onClick={() => setLaunchScreen('tasks')}
-                  className="w-full flex items-center justify-between p-3.5 text-left hover:opacity-80 transition cursor-pointer"
-                  style={{ backgroundColor: launchScreen === 'tasks' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
-                >
-                  <div className="text-xs font-semibold">Список задач</div>
-                  {launchScreen === 'tasks' && <Check size={16} style={{ color: theme.accent }} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Typography & System Styling */}
-            <div className="p-4 rounded-2xl border space-y-4" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
-              {/* Font Size */}
-              <div className="flex items-center justify-between text-xs font-semibold">
-                <span>Размер шрифта</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setQuickSettings(prev => ({ ...prev, fontSize: Math.max(10, prev.fontSize - 1) }))}
-                    className="w-8 h-8 rounded-xl border hover:opacity-80 active:scale-95 transition flex items-center justify-center font-bold text-sm cursor-pointer"
-                    style={{ borderColor: cardBorder }}
-                  >
-                    -
-                  </button>
-                  <span className="font-bold w-10 text-center text-sm">{quickSettings.fontSize}</span>
-                  <button
-                    onClick={() => setQuickSettings(prev => ({ ...prev, fontSize: Math.min(32, prev.fontSize + 1) }))}
-                    className="w-8 h-8 rounded-xl border hover:opacity-80 active:scale-95 transition flex items-center justify-center font-bold text-sm cursor-pointer"
-                    style={{ borderColor: cardBorder }}
-                  >
-                    +
-                  </button>
+                  <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
                 </div>
               </div>
 
-              {/* Line Height */}
-              <div className="flex items-center justify-between text-xs font-semibold pt-3 border-t" style={{ borderColor: cardBorder }}>
-                <span>Межстрочный интервал</span>
-                <CustomSelect
-                  value={quickSettings.lineHeight || 1.6}
-                  onChange={val => setQuickSettings(prev => ({ ...prev, lineHeight: val }))}
-                  options={LINE_HEIGHT_OPTIONS}
-                />
-              </div>
+              {workspacesEnabled && (
+                <div className="pt-4 border-t mt-4 space-y-4" style={{ borderColor: cardBorder }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsWorkspacesOpen(prev => !prev)}
+                    className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                      <span className="text-xs font-bold opacity-85">{tr('Управление воркспейсами')}</span>
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
+                        style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
+                      >
+                        {workspaces.length}/3
+                      </span>
+                    </div>
+                    <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                      <ChevronDown
+                        size={16}
+                        className={`transition-transform duration-200 ${isWorkspacesOpen ? 'rotate-180' : ''}`}
+                        style={{ color: isWorkspacesOpen ? theme.accent : undefined }}
+                      />
+                    </div>
+                  </button>
 
-              {/* Font Family */}
-              <div className="flex items-center justify-between text-xs font-semibold pt-3 border-t" style={{ borderColor: cardBorder }}>
-                <span>Шрифт во всей системе</span>
-                <CustomSelect
-                  value={quickSettings.fontFamily || 'sans'}
-                  onChange={val => setQuickSettings(prev => ({ ...prev, fontFamily: val }))}
-                  options={FONT_FAMILY_OPTIONS}
-                />
-              </div>
+                  {isWorkspacesOpen && (
+                    <div className="space-y-4 pt-1 animate-fadeIn">
+                      {/* List of workspaces */}
+                      <div className="space-y-1">
+                        {workspaces.map(ws => {
+                          const isActive = ws.id === activeWorkspaceId;
+                          const isEditing = editingWorkspaceId === ws.id;
+
+                          return (
+                            <div
+                              key={ws.id}
+                              className="flex items-center justify-between py-2 px-2.5 rounded-xl transition-colors"
+                              style={{
+                                backgroundColor: isActive ? hexToRgba(theme.accent, 0.08) : 'transparent',
+                              }}
+                            >
+                              {/* Left side: Pencil at the left border, followed by name/status */}
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingWorkspaceId(ws.id);
+                                    setEditingWorkspaceName(ws.name);
+                                  }}
+                                  title={tr('Переименовать')}
+                                  className="p-1.5 -ml-1 rounded-lg opacity-60 hover:opacity-100 hover:bg-white/10 active:scale-95 transition cursor-pointer shrink-0"
+                                  style={{ color: theme.text }}
+                                >
+                                  <Edit2 size={15} />
+                                </button>
+
+                                {isEditing ? (
+                                  <form
+                                    onSubmit={(e) => {
+                                      e.preventDefault();
+                                      if (editingWorkspaceName.trim()) {
+                                        renameWorkspace(ws.id, editingWorkspaceName.trim());
+                                      }
+                                      setEditingWorkspaceId(null);
+                                    }}
+                                    className="flex items-center gap-1.5 flex-1 min-w-0"
+                                    onClick={e => e.stopPropagation()}
+                                  >
+                                    <input
+                                      autoFocus
+                                      type="text"
+                                      value={editingWorkspaceName}
+                                      onChange={e => setEditingWorkspaceName(e.target.value)}
+                                      className="py-1 px-2 text-xs font-semibold rounded-lg border outline-none bg-transparent flex-1 min-w-0"
+                                      style={{
+                                        borderColor: theme.accent,
+                                        color: theme.text,
+                                      }}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Escape') setEditingWorkspaceId(null);
+                                      }}
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="p-1.5 rounded-lg text-xs font-bold cursor-pointer shrink-0 transition"
+                                      style={{
+                                        backgroundColor: theme.accent,
+                                        color: isLightColor(theme.accent) ? '#000' : '#fff',
+                                      }}
+                                      title={tr('Сохранить')}
+                                    >
+                                      <Check size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingWorkspaceId(null)}
+                                      className="p-1.5 rounded-lg text-xs opacity-60 hover:opacity-100 cursor-pointer shrink-0 transition"
+                                      title={tr('Отмена')}
+                                    >
+                                      <X size={13} />
+                                    </button>
+                                  </form>
+                                ) : (
+                                  <div
+                                    className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer select-none"
+                                    onClick={() => switchWorkspace(ws.id)}
+                                  >
+                                    <div
+                                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                                      style={{
+                                        backgroundColor: isActive ? theme.accent : hexToRgba(theme.text, 0.25),
+                                      }}
+                                    />
+                                    <span className={`text-sm truncate ${isActive ? 'font-bold' : 'font-medium opacity-80'}`}>
+                                      {ws.name}
+                                    </span>
+                                    {isActive && (
+                                      <span
+                                        className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
+                                        style={{
+                                          backgroundColor: hexToRgba(theme.accent, 0.15),
+                                          color: theme.accent,
+                                        }}
+                                      >
+                                        {tr('Текущий')}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Right side: Delete button */}
+                              {!isEditing && workspaces.length > 1 && (
+                                <div className="flex items-center shrink-0 ml-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm(`Удалить воркспейс «${ws.name}»? Все данные будут перемещены в Основной воркспейс.`)) {
+                                        deleteWorkspace(ws.id);
+                                      }
+                                    }}
+                                    title={tr('Удалить')}
+                                    className="p-1.5 rounded-lg opacity-40 hover:opacity-100 hover:bg-red-500/10 text-red-500 transition cursor-pointer"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Add workspace */}
+                      {workspaces.length < 3 && (
+                        isCreatingWorkspace ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              if (newWorkspaceName.trim()) {
+                                createWorkspace(newWorkspaceName.trim());
+                                setNewWorkspaceName('');
+                                setIsCreatingWorkspace(false);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 p-1 rounded-xl border"
+                            style={{ borderColor: theme.accent }}
+                          >
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder={tr('Название нового воркспейса...')}
+                              value={newWorkspaceName}
+                              onChange={e => setNewWorkspaceName(e.target.value)}
+                              className="py-1.5 px-2.5 text-xs font-semibold bg-transparent outline-none flex-1 min-w-0"
+                              style={{ color: theme.text }}
+                              onKeyDown={e => {
+                                if (e.key === 'Escape') {
+                                  setIsCreatingWorkspace(false);
+                                  setNewWorkspaceName('');
+                                }
+                              }}
+                            />
+                            <button
+                              type="submit"
+                              className="py-1.5 px-3 rounded-lg text-xs font-bold cursor-pointer shrink-0 transition"
+                              style={{
+                                backgroundColor: theme.accent,
+                                color: isLightColor(theme.accent) ? '#000' : '#fff',
+                              }}
+                            >
+                              {tr('Создать')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCreatingWorkspace(false);
+                                setNewWorkspaceName('');
+                              }}
+                              className="p-1.5 rounded-lg text-xs opacity-60 hover:opacity-100 cursor-pointer shrink-0"
+                            >
+                              <X size={14} />
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setIsCreatingWorkspace(true)}
+                            className="py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer opacity-80 hover:opacity-100 w-full"
+                            style={{
+                              color: theme.accent,
+                              backgroundColor: hexToRgba(theme.accent, 0.08),
+                            }}
+                          >
+                            <Plus size={14} />
+                            <span>{tr('Создать воркспейс')} ({workspaces.length}/3)</span>
+                          </button>
+                        )
+                      )}
+
+                      {/* Transfer Elements Section */}
+                      {workspaces.length > 1 && (
+                        <div className="pt-4 space-y-3">
+                          <div>
+                            <div className="text-xs font-bold opacity-80">{tr('Перенос элементов')}</div>
+                            <div className="text-[11px] opacity-45 mt-0.5">
+                              {tr('Перемещение заметок из текущего воркспейса')} («{workspaces.find(w => w.id === activeWorkspaceId)?.name}»)
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 text-xs">
+                            {/* Styled Dropdown: Что перенести (массовый выбор) */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between">
+                                <label className="opacity-60 text-[11px] font-semibold">{tr('Что перенести (массовый выбор):')}</label>
+                                {transferSelectedNoteIds.length > 0 && (
+                                  <span
+                                    className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                    style={{
+                                      backgroundColor: hexToRgba(theme.accent, 0.15),
+                                      color: theme.accent,
+                                    }}
+                                  >
+                                    {tr('Выбрано')}: {transferSelectedNoteIds.length} {tr('из')} {notes.length}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="relative" ref={transferNoteDropdownRef}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsTransferNoteSelectOpen(prev => !prev);
+                                    setIsTransferWsSelectOpen(false);
+                                  }}
+                                  className="w-full flex items-center justify-between py-2.5 px-3 rounded-xl border text-xs font-semibold transition cursor-pointer hover:opacity-90 active:scale-[0.99]"
+                                  style={{
+                                    backgroundColor: cardBg,
+                                    borderColor: isTransferNoteSelectOpen ? theme.accent : cardBorder,
+                                    color: theme.text,
+                                  }}
+                                >
+                                  <span className="truncate pr-2">
+                                    {notes.length === 0
+                                      ? tr('Нет заметок для переноса')
+                                      : transferSelectedNoteIds.length === 0
+                                      ? tr('Выберите заметки для переноса...')
+                                      : transferSelectedNoteIds.length === notes.length
+                                      ? `${tr('Все заметки')} (${notes.length} шт.)`
+                                      : `${tr('Выбрано')}: ${transferSelectedNoteIds.length} ${tr('из')} ${notes.length}`}
+                                  </span>
+                                  <ChevronDown
+                                    size={14}
+                                    className={`shrink-0 opacity-60 transition-transform duration-200 ${
+                                      isTransferNoteSelectOpen ? 'rotate-180' : ''
+                                    }`}
+                                  />
+                                </button>
+
+                                {isTransferNoteSelectOpen && (
+                                  <div
+                                    className="absolute left-0 right-0 top-full mt-1.5 p-2 rounded-2xl border shadow-2xl backdrop-blur-2xl z-50 animate-fadeIn space-y-2"
+                                    style={{
+                                      backgroundColor: cardBg,
+                                      borderColor: cardBorder,
+                                      boxShadow: `0 16px 36px ${isLight ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.6)'}`,
+                                      color: theme.text,
+                                    }}
+                                  >
+                                    {/* Quick select all / deselect toolbar */}
+                                    <div
+                                      className="flex items-center justify-between px-1 pb-1.5 border-b text-[11px]"
+                                      style={{ borderColor: hexToRgba(theme.text, 0.08) }}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (transferSelectedNoteIds.length === notes.length) {
+                                            setTransferSelectedNoteIds([]);
+                                          } else {
+                                            setTransferSelectedNoteIds(notes.map(n => n.id));
+                                          }
+                                        }}
+                                        className="font-bold transition hover:opacity-80 cursor-pointer flex items-center gap-1.5"
+                                        style={{ color: theme.accent }}
+                                      >
+                                        <CheckSquare size={13} />
+                                        <span>
+                                          {transferSelectedNoteIds.length === notes.length
+                                            ? tr('Снять выбор со всех')
+                                            : `${tr('Выбрать все')} (${notes.length})`}
+                                        </span>
+                                      </button>
+
+                                      {transferSelectedNoteIds.length > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setTransferSelectedNoteIds([])}
+                                          className="opacity-50 hover:opacity-100 cursor-pointer font-medium"
+                                        >
+                                          {tr('Сбросить')} ({transferSelectedNoteIds.length})
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {notes.length > 4 && (
+                                      <div
+                                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border"
+                                        style={{
+                                          backgroundColor: hexToRgba(theme.text, 0.03),
+                                          borderColor: hexToRgba(theme.text, 0.1),
+                                        }}
+                                      >
+                                        <Search size={13} className="opacity-40 shrink-0" />
+                                        <input
+                                          type="text"
+                                          value={transferNoteSearch}
+                                          onChange={e => setTransferNoteSearch(e.target.value)}
+                                          placeholder={tr('Поиск заметок...')}
+                                          className="w-full bg-transparent text-xs font-medium outline-none placeholder:opacity-40"
+                                        />
+                                        {transferNoteSearch && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setTransferNoteSearch('')}
+                                            className="p-0.5 opacity-40 hover:opacity-100 cursor-pointer"
+                                          >
+                                            <X size={12} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    <div className="max-h-56 overflow-y-auto space-y-1 pr-0.5">
+                                      {filteredTransferNotes.length === 0 ? (
+                                        <div className="py-3 text-center text-xs opacity-40">
+                                          {tr('Заметки не найдены')}
+                                        </div>
+                                      ) : (
+                                        filteredTransferNotes.map(note => {
+                                          const isSelected = transferSelectedNoteIds.includes(note.id);
+                                          const noteTitle = stripHtmlTags(note.title || note.content).slice(0, 36) || tr('Без названия');
+                                          return (
+                                            <div
+                                              key={note.id}
+                                              onClick={() => {
+                                                setTransferSelectedNoteIds(prev =>
+                                                  prev.includes(note.id)
+                                                    ? prev.filter(id => id !== note.id)
+                                                    : [...prev, note.id]
+                                                );
+                                              }}
+                                              className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer text-left select-none"
+                                              style={{
+                                                backgroundColor: isSelected ? hexToRgba(theme.accent, 0.12) : 'transparent',
+                                                color: isSelected ? theme.accent : theme.text,
+                                              }}
+                                            >
+                                              <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-2">
+                                                <div
+                                                  className="w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition"
+                                                  style={{
+                                                    backgroundColor: isSelected ? theme.accent : 'transparent',
+                                                    borderColor: isSelected ? theme.accent : hexToRgba(theme.text, 0.3),
+                                                    color: '#FFFFFF',
+                                                  }}
+                                                >
+                                                  {isSelected && <Check size={11} strokeWidth={3} />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                  <div className={`truncate ${isSelected ? 'font-bold' : 'opacity-85'}`}>
+                                                    {noteTitle}
+                                                  </div>
+                                                  {note.tags && note.tags.length > 0 && (
+                                                    <div className="text-[10px] opacity-50 truncate mt-0.5">
+                                                      {note.tags.map(t => `#${t}`).join(' ')}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+
+                                    {/* Footer bar in dropdown */}
+                                    <div
+                                      className="pt-1.5 border-t flex items-center justify-between px-1"
+                                      style={{ borderColor: hexToRgba(theme.text, 0.08) }}
+                                    >
+                                      <span className="text-[11px] opacity-60">
+                                        {tr('Выбрано')}: {transferSelectedNoteIds.length}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setIsTransferNoteSelectOpen(false)}
+                                        className="px-3 py-1 rounded-lg text-xs font-bold transition hover:opacity-90 cursor-pointer"
+                                        style={{
+                                          backgroundColor: hexToRgba(theme.accent, 0.15),
+                                          color: theme.accent,
+                                        }}
+                                      >
+                                        {tr('Готово')}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Styled Dropdown: Куда перенести */}
+                            <div className="flex flex-col gap-1.5">
+                              <label className="opacity-60 text-[11px] font-semibold">{tr('Куда перенести:')}</label>
+                              <div className="relative" ref={transferWsDropdownRef}>
+                                {(() => {
+                                  const availableTargets = workspaces.filter(ws => ws.id !== activeWorkspaceId);
+                                  const selectedWs = availableTargets.find(ws => ws.id === transferTargetWsId) || availableTargets[0];
+
+                                  return (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIsTransferWsSelectOpen(prev => !prev);
+                                          setIsTransferNoteSelectOpen(false);
+                                        }}
+                                        className="w-full flex items-center justify-between py-2.5 px-3 rounded-xl border text-xs font-semibold transition cursor-pointer hover:opacity-90 active:scale-[0.99]"
+                                        style={{
+                                          backgroundColor: cardBg,
+                                          borderColor: isTransferWsSelectOpen ? theme.accent : cardBorder,
+                                          color: theme.text,
+                                        }}
+                                      >
+                                        <span className="truncate pr-2">
+                                          {selectedWs?.name || tr('Выберите воркспейс')}
+                                        </span>
+                                        <ChevronDown
+                                          size={14}
+                                          className={`shrink-0 opacity-60 transition-transform duration-200 ${
+                                            isTransferWsSelectOpen ? 'rotate-180' : ''
+                                          }`}
+                                        />
+                                      </button>
+
+                                      {isTransferWsSelectOpen && (
+                                        <div
+                                          className="absolute left-0 right-0 top-full mt-1.5 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-2xl z-50 animate-fadeIn space-y-1"
+                                          style={{
+                                            backgroundColor: cardBg,
+                                            borderColor: cardBorder,
+                                            boxShadow: `0 16px 36px ${isLight ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.6)'}`,
+                                            color: theme.text,
+                                          }}
+                                        >
+                                          {availableTargets.map(ws => {
+                                            const isSelected = (transferTargetWsId || availableTargets[0]?.id) === ws.id;
+                                            return (
+                                              <button
+                                                key={ws.id}
+                                                type="button"
+                                                onClick={() => {
+                                                  setTransferTargetWsId(ws.id);
+                                                  setIsTransferWsSelectOpen(false);
+                                                }}
+                                                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer text-left"
+                                                style={{
+                                                  backgroundColor: isSelected ? hexToRgba(theme.accent, 0.15) : 'transparent',
+                                                  color: isSelected ? theme.accent : theme.text,
+                                                }}
+                                              >
+                                                <span className={isSelected ? 'font-bold' : 'opacity-85'}>{ws.name}</span>
+                                                {isSelected && (
+                                                  <div
+                                                    className="w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0"
+                                                    style={{ backgroundColor: theme.accent }}
+                                                  >
+                                                    <Check size={10} />
+                                                  </div>
+                                                )}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            <button
+                              disabled={transferSelectedNoteIds.length === 0 || isTransferring}
+                              onClick={async () => {
+                                const otherWorkspaces = workspaces.filter(w => w.id !== activeWorkspaceId);
+                                const targetId = transferTargetWsId || otherWorkspaces[0]?.id;
+                                if (!targetId || transferSelectedNoteIds.length === 0) return;
+                                setIsTransferring(true);
+                                try {
+                                  await moveNotesToWorkspace(transferSelectedNoteIds, targetId);
+                                  setTransferSelectedNoteIds([]);
+                                  setIsTransferNoteSelectOpen(false);
+                                } finally {
+                                  setIsTransferring(false);
+                                }
+                              }}
+                              className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                                transferSelectedNoteIds.length === 0 || isTransferring ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-90 active:scale-[0.98]'
+                              }`}
+                              style={{
+                                backgroundColor: theme.accent,
+                                color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
+                              }}
+                            >
+                              {isTransferring ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" />
+                                  <span>{tr('Перенос заметок')} ({transferSelectedNoteIds.length} шт.)...</span>
+                                </>
+                              ) : (
+                                <span>
+                                  {transferSelectedNoteIds.length > 0
+                                    ? `${tr('Перенести заметки')} (${transferSelectedNoteIds.length} шт.)`
+                                    : tr('Выберите заметки для переноса')}
+                                </span>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Launch Screen Setting (Что открывать при запуске) - Collapsible */}
+            <div className="p-4 rounded-2xl border space-y-3 transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <button
+                type="button"
+                onClick={() => setIsLaunchScreenOpen(prev => !prev)}
+                className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                  <span className="text-xs font-bold opacity-85">{tr('Что открывать при запуске')}</span>
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0 truncate max-w-[160px]"
+                    style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
+                  >
+                    {launchScreen === 'notes' ? tr('Список заметок') :
+                     launchScreen === 'editor' ? tr('Последняя заметка') :
+                     launchScreen === 'tasks' ? tr('Список задач') :
+                     launchScreen === 'kanban' ? tr('Канбан') : 'Anacrusa'}
+                  </span>
+                </div>
+                <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-200 ${isLaunchScreenOpen ? 'rotate-180' : ''}`}
+                    style={{ color: isLaunchScreenOpen ? theme.accent : undefined }}
+                  />
+                </div>
+              </button>
+
+              {isLaunchScreenOpen && (
+                <div className="rounded-xl border overflow-hidden pt-1 animate-fadeIn" style={{ borderColor: cardBorder }}>
+                  {/* Option 1: Список заметок */}
+                  <button
+                    onClick={() => setLaunchScreen('notes')}
+                    className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
+                    style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'notes' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
+                  >
+                    <div className="text-xs font-semibold">{tr('Список заметок')}</div>
+                    {launchScreen === 'notes' && <Check size={16} style={{ color: theme.accent }} />}
+                  </button>
+
+                  {/* Option 2: Последняя заметка */}
+                  <button
+                    onClick={() => setLaunchScreen('editor')}
+                    className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
+                    style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'editor' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
+                  >
+                    <div className="text-xs font-semibold">{tr('Последняя заметка')}</div>
+                    {launchScreen === 'editor' && <Check size={16} style={{ color: theme.accent }} />}
+                  </button>
+
+                  {/* Option 3: Список задач */}
+                  <button
+                    onClick={() => setLaunchScreen('tasks')}
+                    className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
+                    style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'tasks' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
+                  >
+                    <div className="text-xs font-semibold">{tr('Список задач')}</div>
+                    {launchScreen === 'tasks' && <Check size={16} style={{ color: theme.accent }} />}
+                  </button>
+
+                  {/* Option 4: Канбан */}
+                  <button
+                    onClick={() => setLaunchScreen('kanban')}
+                    className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
+                    style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'kanban' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
+                  >
+                    <div className="text-xs font-semibold">{tr('Канбан')}</div>
+                    {launchScreen === 'kanban' && <Check size={16} style={{ color: theme.accent }} />}
+                  </button>
+
+                  {/* Option 5: Anacrusa */}
+                  <button
+                    onClick={() => setLaunchScreen('anacrusa')}
+                    className="w-full flex items-center justify-between p-3.5 text-left hover:opacity-80 transition cursor-pointer"
+                    style={{ backgroundColor: launchScreen === 'anacrusa' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
+                  >
+                    <div className="text-xs font-semibold">Anacrusa</div>
+                    {launchScreen === 'anacrusa' && <Check size={16} style={{ color: theme.accent }} />}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Typography & System Styling - Collapsible */}
+            <div className="p-4 rounded-2xl border space-y-4 transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <button
+                type="button"
+                onClick={() => setIsTypographyOpen(prev => !prev)}
+                className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                  <span className="text-xs font-bold opacity-85">{tr('Типографика и оформление')}</span>
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
+                    style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
+                  >
+                    {quickSettings.fontSize}px • {quickSettings.lineHeight || 1.6}
+                  </span>
+                </div>
+                <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-200 ${isTypographyOpen ? 'rotate-180' : ''}`}
+                    style={{ color: isTypographyOpen ? theme.accent : undefined }}
+                  />
+                </div>
+              </button>
+
+              {isTypographyOpen && (
+                <div className="space-y-4 pt-1 animate-fadeIn">
+                  {/* Font Size */}
+                  <div className="flex items-center justify-between text-xs font-semibold">
+                    <span>{tr('Размер шрифта')}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setQuickSettings(prev => ({ ...prev, fontSize: Math.max(10, prev.fontSize - 1) }))}
+                        className="w-8 h-8 rounded-xl border hover:opacity-80 active:scale-95 transition flex items-center justify-center font-bold text-sm cursor-pointer"
+                        style={{ borderColor: cardBorder }}
+                      >
+                        -
+                      </button>
+                      <span className="font-bold w-10 text-center text-sm">{quickSettings.fontSize}</span>
+                      <button
+                        onClick={() => setQuickSettings(prev => ({ ...prev, fontSize: Math.min(32, prev.fontSize + 1) }))}
+                        className="w-8 h-8 rounded-xl border hover:opacity-80 active:scale-95 transition flex items-center justify-center font-bold text-sm cursor-pointer"
+                        style={{ borderColor: cardBorder }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Line Height */}
+                  <div className="flex items-center justify-between text-xs font-semibold pt-3 border-t" style={{ borderColor: cardBorder }}>
+                    <span>{tr('Межстрочный интервал')}</span>
+                    <CustomSelect
+                      value={quickSettings.lineHeight || 1.6}
+                      onChange={val => setQuickSettings(prev => ({ ...prev, lineHeight: val }))}
+                      options={LINE_HEIGHT_OPTIONS}
+                    />
+                  </div>
+
+                  {/* Font Family */}
+                  <div className="flex items-center justify-between text-xs font-semibold pt-3 border-t" style={{ borderColor: cardBorder }}>
+                    <span>{tr('Шрифт во всей системе')}</span>
+                    <CustomSelect
+                      value={quickSettings.fontFamily || 'sans'}
+                      onChange={val => setQuickSettings(prev => ({ ...prev, fontFamily: val }))}
+                      options={FONT_FAMILY_OPTIONS}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Note Display Metadata & Formatting - Collapsible */}
+            <div className="p-4 rounded-2xl border space-y-4 transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <button
+                type="button"
+                onClick={() => setIsNoteDisplayOpen(prev => !prev)}
+                className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                  <span className="text-xs font-bold opacity-85">{tr('Отображение в заметках')}</span>
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
+                    style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
+                  >
+                    {[quickSettings.showCharCount, quickSettings.showWordCount, quickSettings.showDate, quickSettings.oneTimeFormatting].filter(Boolean).length} / 4
+                  </span>
+                </div>
+                <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-200 ${isNoteDisplayOpen ? 'rotate-180' : ''}`}
+                    style={{ color: isNoteDisplayOpen ? theme.accent : undefined }}
+                  />
+                </div>
+              </button>
+
+              {isNoteDisplayOpen && (
+                <div className="space-y-3 pt-1 animate-fadeIn">
+                  {/* Schetchik simvolov */}
+                  <div
+                    className="flex items-center justify-between text-xs font-semibold py-1 cursor-pointer gap-4"
+                    onClick={() => setQuickSettings(prev => ({ ...prev, showCharCount: !prev.showCharCount }))}
+                  >
+                    <div className="flex-1 pr-4">
+                      <div>{tr('Счётчик символов')}</div>
+                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать количество символов под заголовком заметки')}</div>
+                    </div>
+                    <div
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                        quickSettings.showCharCount ? 'justify-end' : 'justify-start'
+                      }`}
+                      style={{
+                        backgroundColor: quickSettings.showCharCount ? theme.accent : hexToRgba(theme.text, 0.2),
+                      }}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                    </div>
+                  </div>
+
+                  {/* Schetchik slov */}
+                  <div
+                    className="flex items-center justify-between text-xs font-semibold pt-3 border-t cursor-pointer gap-4"
+                    style={{ borderColor: cardBorder }}
+                    onClick={() => setQuickSettings(prev => ({ ...prev, showWordCount: !prev.showWordCount }))}
+                  >
+                    <div className="flex-1 pr-4">
+                      <div>{tr('Счётчик слов')}</div>
+                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать количество слов под заголовком заметки')}</div>
+                    </div>
+                    <div
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                        quickSettings.showWordCount ? 'justify-end' : 'justify-start'
+                      }`}
+                      style={{
+                        backgroundColor: quickSettings.showWordCount ? theme.accent : hexToRgba(theme.text, 0.2),
+                      }}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                    </div>
+                  </div>
+
+                  {/* Data izmeneniya */}
+                  <div
+                    className="flex items-center justify-between text-xs font-semibold pt-3 border-t cursor-pointer gap-4"
+                    style={{ borderColor: cardBorder }}
+                    onClick={() => setQuickSettings(prev => ({ ...prev, showDate: !prev.showDate }))}
+                  >
+                    <div className="flex-1 pr-4">
+                      <div>{tr('Дата изменения')}</div>
+                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать дату последнего изменения заметки')}</div>
+                    </div>
+                    <div
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                        quickSettings.showDate ? 'justify-end' : 'justify-start'
+                      }`}
+                      style={{
+                        backgroundColor: quickSettings.showDate ? theme.accent : hexToRgba(theme.text, 0.2),
+                      }}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                    </div>
+                  </div>
+
+                  {/* Odnorazovoe formatirovanie */}
+                  <div
+                    className="flex items-center justify-between text-xs font-semibold pt-3 border-t cursor-pointer gap-4"
+                    style={{ borderColor: cardBorder }}
+                    onClick={() => setQuickSettings(prev => ({ ...prev, oneTimeFormatting: !prev.oneTimeFormatting }))}
+                  >
+                    <div className="flex-1 pr-4">
+                      <div>{tr('Одноразовое форматирование')}</div>
+                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Сбрасывать активный инструмент форматирования после применения к тексту')}</div>
+                    </div>
+                    <div
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                        quickSettings.oneTimeFormatting ? 'justify-end' : 'justify-start'
+                      }`}
+                      style={{
+                        backgroundColor: quickSettings.oneTimeFormatting ? theme.accent : hexToRgba(theme.text, 0.2),
+                      }}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Formatting Toolbar Buttons (Кнопки меню форматирования) - Collapsible */}
+            <div className="p-4 rounded-2xl border space-y-3 transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <button
+                type="button"
+                onClick={() => setIsFormattingButtonsOpen(prev => !prev)}
+                className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+              >
+                <div className="flex-1 min-w-0 pr-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold opacity-85">{tr('Кнопки меню форматирования')}</span>
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
+                      style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
+                    >
+                      {(quickSettings.formattingToolbarButtons || ALL_FORMATTING_TOOLBAR_BUTTONS).length} {tr('активных')}
+                    </span>
+                  </div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">
+                    {tr('Выберите, какие кнопки отображать во всплывающем меню при выделении текста в заметке')}
+                  </div>
+                </div>
+                <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-200 ${isFormattingButtonsOpen ? 'rotate-180' : ''}`}
+                    style={{ color: isFormattingButtonsOpen ? theme.accent : undefined }}
+                  />
+                </div>
+              </button>
+
+              {isFormattingButtonsOpen && (
+                <div className="space-y-1 pt-2 border-t animate-fadeIn" style={{ borderColor: cardBorder }}>
+                  {formattingButtonOptions.map((btn, idx) => {
+                    const currentBtns = quickSettings.formattingToolbarButtons || ALL_FORMATTING_TOOLBAR_BUTTONS;
+                    const isEnabled = currentBtns.includes(btn.id);
+                    const IconComp = btn.icon;
+
+                    const handleToggle = () => {
+                      const next = isEnabled
+                        ? currentBtns.filter(id => id !== btn.id)
+                        : [...currentBtns, btn.id];
+                      setQuickSettings(prev => ({ ...prev, formattingToolbarButtons: next }));
+                    };
+
+                    return (
+                      <div
+                        key={btn.id}
+                        className={`flex items-center justify-between text-xs font-semibold py-2.5 cursor-pointer gap-4 ${
+                          idx > 0 ? 'border-t' : ''
+                        }`}
+                        style={{ borderColor: cardBorder }}
+                        onClick={handleToggle}
+                      >
+                        <div className="flex items-center gap-2.5 flex-1 pr-4 min-w-0">
+                          {btn.letter ? (
+                            <div
+                              className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs border shrink-0 ${btn.letterClass || ''}`}
+                              style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.04) }}
+                            >
+                              {btn.letter}
+                            </div>
+                          ) : IconComp ? (
+                            <div
+                              className="w-7 h-7 rounded-xl flex items-center justify-center border shrink-0 opacity-80"
+                              style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.04) }}
+                            >
+                              <IconComp size={14} />
+                            </div>
+                          ) : null}
+                          <div className="min-w-0">
+                            <div className="truncate">{btn.label}</div>
+                            <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">{btn.desc}</div>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                            isEnabled ? 'justify-end' : 'justify-start'
+                          }`}
+                          style={{
+                            backgroundColor: isEnabled ? theme.accent : hexToRgba(theme.text, 0.2),
+                          }}
+                        >
+                          <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Note Action Buttons (Кнопки меню заметки) - Collapsible */}
+            <div className="p-4 rounded-2xl border space-y-3 transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <button
+                type="button"
+                onClick={() => setIsNoteActionButtonsOpen(prev => !prev)}
+                className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+              >
+                <div className="flex-1 min-w-0 pr-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold opacity-85">{tr('Кнопки меню заметки')}</span>
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
+                      style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
+                    >
+                      {(quickSettings.noteTileActions || ALL_NOTE_TILE_ACTIONS).length} {tr('активных')}
+                    </span>
+                  </div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">
+                    {tr('Выберите, какие кнопки отображать во всплывающем меню действий с заметкой')}
+                  </div>
+                </div>
+                <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-200 ${isNoteActionButtonsOpen ? 'rotate-180' : ''}`}
+                    style={{ color: isNoteActionButtonsOpen ? theme.accent : undefined }}
+                  />
+                </div>
+              </button>
+
+              {isNoteActionButtonsOpen && (
+                <div className="space-y-1 pt-2 border-t animate-fadeIn" style={{ borderColor: cardBorder }}>
+                  {noteTileActionOptions.map((btn, idx) => {
+                    const currentActions = quickSettings.noteTileActions || ALL_NOTE_TILE_ACTIONS;
+                    const isEnabled = currentActions.includes(btn.id);
+                    const IconComp = btn.icon;
+
+                    const handleToggle = () => {
+                      const next = isEnabled
+                        ? currentActions.filter(id => id !== btn.id)
+                        : [...currentActions, btn.id];
+                      setQuickSettings(prev => ({ ...prev, noteTileActions: next }));
+                    };
+
+                    return (
+                      <div
+                        key={btn.id}
+                        className={`flex items-center justify-between text-xs font-semibold py-2.5 cursor-pointer gap-4 ${
+                          idx > 0 ? 'border-t' : ''
+                        }`}
+                        style={{ borderColor: cardBorder }}
+                        onClick={handleToggle}
+                      >
+                        <div className="flex items-center gap-2.5 flex-1 pr-4 min-w-0">
+                          <div
+                            className="w-7 h-7 rounded-xl flex items-center justify-center border shrink-0 opacity-80"
+                            style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.04) }}
+                          >
+                            <IconComp size={14} style={{ color: theme.accent }} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate">{btn.label}</div>
+                            <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">{btn.desc}</div>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                            isEnabled ? 'justify-end' : 'justify-start'
+                          }`}
+                          style={{
+                            backgroundColor: isEnabled ? theme.accent : hexToRgba(theme.text, 0.2),
+                          }}
+                        >
+                          <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* TAB: AI Usage */}
-        {activeSettingsTab === 'ai' && (
-          <div className="space-y-4">
-            <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
-              <div className="flex items-center justify-between text-xs font-semibold">
-                <span>ИИ Модель</span>
-                <span className="font-bold" style={{ color: theme.accent }}>Gemini 3.6 Flash</span>
+        {/* TAB: Wellbeing (Благополучие) */}
+        {activeSettingsTab === 'wellbeing' && (
+          <div className="space-y-4 animate-fadeIn">
+            {/* Focus Mode card */}
+            <div
+              className="p-5 rounded-3xl border space-y-3"
+              style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+            >
+              <div
+                className="flex items-center justify-between gap-4 cursor-pointer"
+                onClick={() =>
+                  setQuickSettings(prev => ({
+                    ...prev,
+                    pinFocusModeToBottomBar: !prev.pinFocusModeToBottomBar,
+                  }))
+                }
+              >
+                <div className="space-y-1 pr-2">
+                  <span className="font-bold text-sm block">
+                    {tr('Закрепить режим фокуса')}
+                  </span>
+                  <p className="text-xs opacity-60 leading-relaxed">
+                    {tr('Переносит кнопку включения режима фокуса в нижнюю панель редактора (справа от «•••»).')}
+                  </p>
+                </div>
+                <div
+                  className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                    quickSettings.pinFocusModeToBottomBar ? 'justify-end' : 'justify-start'
+                  }`}
+                  style={{
+                    backgroundColor: quickSettings.pinFocusModeToBottomBar
+                      ? theme.accent
+                      : hexToRgba(theme.text, 0.2),
+                  }}
+                >
+                  <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                </div>
               </div>
-              <div className="flex items-center justify-between text-xs font-semibold">
-                <span>Режим обработки</span>
-                <span className="opacity-60">Серверный прокси (/api/ai/process)</span>
+            </div>
+
+            {/* Bedtime Preparation card (Подготовка ко сну) */}
+            <div
+              className="p-5 rounded-3xl border space-y-4"
+              style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+            >
+              {/* Header with switch */}
+              <div
+                className="flex items-center justify-between gap-4 cursor-pointer"
+                onClick={() =>
+                  setQuickSettings(prev => ({
+                    ...prev,
+                    bedtimeReminderEnabled: !prev.bedtimeReminderEnabled,
+                  }))
+                }
+              >
+                <div className="space-y-0.5 pr-2">
+                  <span className="font-bold text-sm block">
+                    {tr('Подготовка ко сну')}
+                  </span>
+                  <p className="text-xs opacity-60">
+                    {tr('Ежедневное напоминание завершить дела и настроиться на сон')}
+                  </p>
+                </div>
+
+                <div
+                  className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                    quickSettings.bedtimeReminderEnabled ? 'justify-end' : 'justify-start'
+                  }`}
+                  style={{
+                    backgroundColor: quickSettings.bedtimeReminderEnabled
+                      ? theme.accent
+                      : hexToRgba(theme.text, 0.2),
+                  }}
+                >
+                  <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                </div>
               </div>
+
+              {/* Collapsible/Active Details */}
+              {quickSettings.bedtimeReminderEnabled && (
+                <div
+                  className="space-y-4 pt-3 border-t"
+                  style={{ borderColor: hexToRgba(theme.text, 0.08) }}
+                >
+                  {/* Custom Time Picker */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold opacity-75">
+                      {tr('Время напоминания')}
+                    </label>
+                    <CustomTimePicker
+                      value={quickSettings.bedtimeReminderTime || '22:30'}
+                      onChange={t =>
+                        setQuickSettings(prev => ({
+                          ...prev,
+                          bedtimeReminderTime: t,
+                        }))
+                      }
+                      placeholder={tr('Выберите время ко сну')}
+                    />
+                    <p className="text-[11px] opacity-50">
+                      {tr('В указанное время появится пуш-уведомление с вашим заголовком и текстом.')}
+                    </p>
+                  </div>
+
+                  {/* Custom Title Input */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold opacity-75">
+                      {tr('Заголовок напоминания')}
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        quickSettings.bedtimeReminderTitle !== undefined
+                          ? quickSettings.bedtimeReminderTitle
+                          : 'Подготовка ко сну'
+                      }
+                      onChange={e =>
+                        setQuickSettings(prev => ({
+                          ...prev,
+                          bedtimeReminderTitle: e.target.value,
+                        }))
+                      }
+                      placeholder={tr('Подготовка ко сну')}
+                      className="w-full px-3.5 py-2.5 rounded-2xl border text-xs focus:outline-none transition shadow-inner"
+                      style={{
+                        backgroundColor: hexToRgba(theme.text, 0.03),
+                        borderColor: hexToRgba(theme.text, 0.15),
+                        color: theme.text,
+                      }}
+                    />
+                  </div>
+
+                  {/* Custom Description Textarea */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold opacity-75">
+                      {tr('Описание напоминания')}
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={quickSettings.bedtimeReminderDescription || ''}
+                      onChange={e =>
+                        setQuickSettings(prev => ({
+                          ...prev,
+                          bedtimeReminderDescription: e.target.value,
+                        }))
+                      }
+                      placeholder={tr('Добавьте описание (необязательно)')}
+                      className="w-full px-3.5 py-2.5 rounded-2xl border text-xs focus:outline-none transition shadow-inner resize-none"
+                      style={{
+                        backgroundColor: hexToRgba(theme.text, 0.03),
+                        borderColor: hexToRgba(theme.text, 0.15),
+                        color: theme.text,
+                      }}
+                    />
+                  </div>
+
+                  {/* Action buttons: Test preview + Request Browser Notification permission */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => triggerBedtimeReminderTest()}
+                      className="py-2 px-3.5 rounded-2xl text-xs font-bold text-white transition active:scale-95 cursor-pointer shadow-sm flex items-center gap-2"
+                      style={{ backgroundColor: theme.accent }}
+                    >
+                      <Bell size={14} />
+                      <span>{tr('Проверить напоминание')}</span>
+                    </button>
+
+                    {typeof window !== 'undefined' &&
+                      'Notification' in window &&
+                      Notification.permission === 'default' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            Notification.requestPermission().then(() => {
+                              // state will update
+                            });
+                          }}
+                          className="py-2 px-3 rounded-2xl border text-xs font-semibold transition active:scale-95 cursor-pointer opacity-70 hover:opacity-100"
+                          style={{
+                            borderColor: hexToRgba(theme.text, 0.2),
+                            backgroundColor: hexToRgba(theme.text, 0.03),
+                            color: theme.text,
+                          }}
+                        >
+                          {tr('Разрешить системные пуш-уведомления')}
+                        </button>
+                      )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -900,10 +2367,7 @@ export const SettingsPage: React.FC = () => {
           <div className="space-y-4">
             {/* Plashka 1: Import Notes from multiple formats */}
             <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
-              <div className="text-sm font-bold">Импорт заметок и файлов</div>
-              <p className="text-xs opacity-70 leading-relaxed">
-                Импортируйте документы, книги, таблицы и изображения с автоматическим распознаванием структуры и вложений.
-              </p>
+              <div className="text-sm font-bold">{tr('Импорт заметок и файлов', 'Import Notes and Files')}</div>
 
               {/* Upload Dropzone / Button */}
               <label
@@ -923,21 +2387,17 @@ export const SettingsPage: React.FC = () => {
                   onChange={e => handleFileImport(e.target.files)}
                   disabled={isImporting}
                 />
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: hexToRgba(theme.accent, 0.2), color: theme.accent }}
-                >
+                <div style={{ color: theme.accent }}>
                   {isImporting ? (
-                    <Loader2 size={20} className="animate-spin" />
+                    <Loader2 size={24} className="animate-spin" />
                   ) : (
-                    <Upload size={20} />
+                    <Upload size={24} />
                   )}
                 </div>
                 <div className="text-xs font-bold" style={{ color: theme.text }}>
-                  {isImporting ? 'Импортирование файлов...' : 'Нажмите для выбора или перетащите файлы сюда'}
-                </div>
-                <div className="text-[10px] opacity-60">
-                  Поддерживается выбор нескольких файлов одновременно
+                  {isImporting
+                    ? tr('Импортирование файлов...', 'Importing files...')
+                    : tr('Нажмите для выбора или перетащите файлы сюда', 'Click to browse or drag and drop files here')}
                 </div>
               </label>
 
@@ -961,297 +2421,1455 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             {/* Plashka 2: Export Data */}
-            <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
-              <div className="text-sm font-bold">Экспорт данных</div>
-              <p className="text-xs opacity-70 leading-relaxed">
-                Экспортируйте выбранную заметку в любой текстовый формат или сохраните полный резервный файл.
-              </p>
+            <div className="p-4 rounded-2xl border space-y-2" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <div className="text-sm font-bold mb-1">{tr('Экспорт')}</div>
 
-              <div className="space-y-2 pt-1">
-                {/* Note export button (triggers Note selection modal) */}
+              <div className="space-y-1.5">
+                {/* Block export button */}
                 <button
-                  onClick={() => openExportModal()}
-                  className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl border text-xs font-bold transition active:scale-[0.99] cursor-pointer hover:opacity-90"
-                  style={{
-                    backgroundColor: hexToRgba(theme.accent, 0.12),
-                    borderColor: hexToRgba(theme.accent, 0.35),
-                    color: theme.accent,
-                  }}
+                  type="button"
+                  id="settings-export-block-btn"
+                  onClick={() => openBatchExportModal('block')}
+                  className="w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs font-semibold hover:opacity-80 transition cursor-pointer"
+                  style={{ backgroundColor: hexToRgba(theme.text, 0.03) }}
                 >
-                  <Download size={16} />
-                  <span>Экспорт заметки в файл...</span>
+                  <FolderArchive size={15} className="shrink-0" style={{ color: theme.accent }} />
+                  <span>{tr('Экспорт блока', 'Export Block')}</span>
+                </button>
+
+                {/* Bulk notes export button */}
+                <button
+                  type="button"
+                  id="settings-export-multiple-notes-btn"
+                  onClick={() => openBatchExportModal('notes')}
+                  className="w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs font-semibold hover:opacity-80 transition cursor-pointer"
+                  style={{ backgroundColor: hexToRgba(theme.text, 0.03) }}
+                >
+                  <Files size={15} className="shrink-0" style={{ color: theme.accent }} />
+                  <span>{tr('Экспорт нескольких заметок', 'Export Multiple Notes')}</span>
+                </button>
+
+                {/* Single Note export button */}
+                <button
+                  type="button"
+                  id="settings-export-single-note-btn"
+                  onClick={() => openExportModal()}
+                  className="w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs font-semibold hover:opacity-80 transition cursor-pointer"
+                  style={{ backgroundColor: hexToRgba(theme.text, 0.03) }}
+                >
+                  <Download size={15} className="shrink-0" style={{ color: theme.accent }} />
+                  <span>{tr('Экспорт одной заметки', 'Export Single Note')}</span>
                 </button>
 
                 {/* Full JSON backup export button */}
                 <button
+                  type="button"
+                  id="settings-export-full-backup-btn"
                   onClick={exportData}
-                  className="w-full flex items-center justify-between p-3 rounded-xl border text-xs font-semibold hover:opacity-80 transition cursor-pointer"
-                  style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.02) }}
+                  className="w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs font-semibold hover:opacity-80 transition cursor-pointer"
+                  style={{ backgroundColor: hexToRgba(theme.text, 0.03) }}
                 >
-                  <span className="flex items-center gap-2 opacity-85">
-                    <Download size={14} /> Полный бэкап приложения (JSON)
-                  </span>
-                  <span className="opacity-50 text-[11px]">Скачать всё</span>
+                  <Database size={15} className="shrink-0" style={{ color: theme.accent }} />
+                  <span>{tr('Резервная копия (JSON)')}</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Plashka: Trash Auto-Deletion Retention */}
+            <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-bold flex items-center gap-2">
+                    <Trash2 size={16} className="opacity-70" />
+                    <span>{tr('Очистка корзины')}</span>
+                  </div>
+                  <div className="text-xs opacity-60 mt-0.5">
+                    {tr('Автоматическое удаление элементов через заданный срок')}
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  <CustomSelect
+                    value={trashRetentionDays}
+                    onChange={val => setTrashRetentionDays(Number(val) as any)}
+                    options={trashRetentionOptions}
+                  />
+                </div>
               </div>
             </div>
 
             {/* Plashka 3: Reset Data */}
             <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
-              <div className="text-sm font-bold text-red-500">Сброс данных</div>
+              <div className="text-sm font-bold text-red-500">{tr('Сброс данных')}</div>
               <p className="text-xs opacity-60">
-                Удаляет все заметки, списки задач, теги и всю сохраненную историю.
+                {tr('Безвозвратно удаляет все данные')}
               </p>
               <button
                 onClick={() => {
                   setResetConfirmInput('');
                   setIsResetConfirmOpen(true);
                 }}
-                className="w-full flex items-center justify-between p-3 rounded-xl border text-xs font-bold text-red-500 hover:bg-red-500/10 active:scale-[0.99] transition cursor-pointer"
+                className="w-full flex items-center justify-start gap-2 p-3 rounded-xl border text-xs font-bold text-red-500 hover:bg-red-500/10 active:scale-[0.99] transition cursor-pointer"
                 style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}
               >
-                <span className="flex items-center gap-2">
-                  <RefreshCw size={15} /> Сбросить все данные
-                </span>
-                <span>Сбросить</span>
+                <RefreshCw size={15} />
+                <span>{tr('Сбросить все данные')}</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* TAB: AI & Web Search */}
+        {/* TAB: AI Usage */}
         {activeSettingsTab === 'ai' && (
-          <div className="space-y-4">
-            {/* Web Search Engine (Tavily BYOK) */}
+          <div className="space-y-5">
+            {/* ANACRUSA AI AGENT CONFIGURATION CARD */}
             <div
               className="p-4 sm:p-5 rounded-2xl border space-y-4 shadow-xs"
               style={{ backgroundColor: cardBg, borderColor: cardBorder }}
             >
+              {/* Header */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="p-2 rounded-xl flex items-center justify-center shrink-0"
-                    style={{
-                      backgroundColor: hexToRgba(theme.accent, 0.15),
-                      color: theme.accent,
-                    }}
-                  >
-                    <Globe size={18} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold">Веб-поиск</h3>
-                    <p className="text-xs opacity-60 mt-0.5">
-                      Поиск информации и формирование саммари через Tavily API (BYOK)
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold shrink-0"
-                  style={{
-                    backgroundColor: webSearchSettings.tavilyApiKey.trim()
-                      ? 'rgba(34, 197, 94, 0.15)'
-                      : hexToRgba(theme.text, 0.08),
-                    color: webSearchSettings.tavilyApiKey.trim() ? '#22C55E' : hexToRgba(theme.text, 0.6),
-                  }}
-                >
-                  {webSearchSettings.tavilyApiKey.trim() ? 'Ключ активен' : 'Ключ не задан'}
+                <div className="flex items-center gap-2">
+                  <Sparkles size={18} style={{ color: theme.accent }} className="shrink-0" />
+                  <h3 className="text-sm font-extrabold">
+                    ИИ ассистент Anacrusa
+                  </h3>
                 </div>
               </div>
 
-              {/* API Key Input */}
-              <div className="space-y-2 pt-1">
+              {/* AI Provider Switcher */}
+              <div className="space-y-1.5 pt-1">
                 <label className="text-xs font-bold opacity-80 block">
-                  API-ключ Tavily (BYOK)
+                  Провайдер ИИ
                 </label>
-                <div className="relative flex items-center">
-                  <input
-                    type={showTavilyKey ? 'text' : 'password'}
-                    value={webSearchSettings.tavilyApiKey}
-                    onChange={e =>
-                      setWebSearchSettings(prev => ({
-                        ...prev,
-                        tavilyApiKey: e.target.value,
-                      }))
-                    }
-                    placeholder="tvly-xxxxxxxxxxxxxxxxxxxx"
-                    className="w-full py-2.5 pl-3.5 pr-10 rounded-xl border text-xs font-mono outline-hidden transition"
-                    style={{
-                      backgroundColor: hexToRgba(theme.text, 0.04),
-                      borderColor: webSearchSettings.tavilyApiKey.trim()
-                        ? hexToRgba(theme.accent, 0.5)
-                        : cardBorder,
-                      color: theme.text,
-                    }}
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Cohere */}
                   <button
                     type="button"
-                    onClick={() => setShowTavilyKey(prev => !prev)}
-                    className="absolute right-3 opacity-60 hover:opacity-100 transition cursor-pointer"
-                    title={showTavilyKey ? 'Скрыть ключ' : 'Показать ключ'}
+                    onClick={() =>
+                      setAnacrusaSettings(prev => ({ ...prev, provider: 'cohere' }))
+                    }
+                    className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
+                    style={{
+                      backgroundColor:
+                        anacrusaSettings.provider !== 'ionet'
+                          ? hexToRgba(theme.accent, 0.15)
+                          : 'transparent',
+                      borderColor:
+                        anacrusaSettings.provider !== 'ionet'
+                          ? theme.accent
+                          : hexToRgba(theme.text, 0.12),
+                    }}
                   >
-                    {showTavilyKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold block">Cohere</span>
+                    </div>
+                    {anacrusaSettings.provider !== 'ionet' && (
+                      <Check size={16} className="shrink-0" style={{ color: theme.accent }} />
+                    )}
+                  </button>
+
+                  {/* io.net */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAnacrusaSettings(prev => ({ ...prev, provider: 'ionet' }))
+                    }
+                    className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
+                    style={{
+                      backgroundColor:
+                        anacrusaSettings.provider === 'ionet'
+                          ? hexToRgba(theme.accent, 0.15)
+                          : 'transparent',
+                      borderColor:
+                        anacrusaSettings.provider === 'ionet'
+                          ? theme.accent
+                          : hexToRgba(theme.text, 0.12),
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold block">io.net</span>
+                    </div>
+                    {anacrusaSettings.provider === 'ionet' && (
+                      <Check size={16} className="shrink-0" style={{ color: theme.accent }} />
+                    )}
                   </button>
                 </div>
+              </div>
 
-                <div className="flex items-center justify-between text-[11px] pt-0.5">
-                  <span className="opacity-60">Ключ сохраняется локально в вашем браузере</span>
-                  <a
-                    href="https://tavily.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 font-bold hover:underline transition"
-                    style={{ color: theme.accent }}
+              {/* COHERE SETTINGS */}
+              {anacrusaSettings.provider !== 'ionet' && (
+                <>
+                  {/* Cohere API Key Input */}
+                  <div className="space-y-2 pt-1">
+                    <label className="text-xs font-bold opacity-80 block">
+                      API-ключ Cohere
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type={showCohereKey ? 'text' : 'password'}
+                        value={anacrusaSettings.cohereApiKey}
+                        onChange={e =>
+                          setAnacrusaSettings(prev => ({
+                            ...prev,
+                            cohereApiKey: e.target.value,
+                          }))
+                        }
+                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        className="w-full py-2.5 pl-3.5 pr-10 rounded-xl border text-xs font-mono outline-hidden transition"
+                        style={{
+                          backgroundColor: hexToRgba(theme.text, 0.04),
+                          borderColor: anacrusaSettings.cohereApiKey.trim()
+                            ? hexToRgba(theme.accent, 0.5)
+                            : cardBorder,
+                          color: theme.text,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCohereKey(prev => !prev)}
+                        className="absolute right-3 opacity-60 hover:opacity-100 transition cursor-pointer"
+                        title={showCohereKey ? 'Скрыть ключ' : 'Показать ключ'}
+                      >
+                        {showCohereKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-end text-[11px] pt-0.5">
+                      <a
+                        href="https://dashboard.cohere.com/api-keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 font-semibold opacity-60 hover:opacity-100 hover:underline transition"
+                        style={{ color: theme.text }}
+                      >
+                        <span>Получить ключ на cohere.com</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Cohere Model Selection Dropdown */}
+                  <div className="space-y-2 pt-1 relative" ref={modelDropdownRef}>
+                    <label className="text-xs font-bold opacity-80 block">
+                      Выбор модели Cohere
+                    </label>
+                    {(() => {
+                      const currentModel =
+                        COHERE_MODELS.find(m => m.id === anacrusaSettings.model) || COHERE_MODELS[0];
+                      return (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setIsAiModelDropdownOpen(prev => !prev)}
+                            className="w-full p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between shadow-xs hover:opacity-95"
+                            style={{
+                              backgroundColor: hexToRgba(theme.text, 0.04),
+                              borderColor: isAiModelDropdownOpen ? theme.accent : cardBorder,
+                              color: theme.text,
+                            }}
+                          >
+                            <div className="min-w-0 pr-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold truncate">{currentModel.name}</span>
+                              </div>
+                            </div>
+                            <ChevronDown
+                              size={16}
+                              className={`shrink-0 transition-transform duration-200 opacity-60 ${
+                                isAiModelDropdownOpen ? 'rotate-180 opacity-100' : ''
+                              }`}
+                              style={{ color: isAiModelDropdownOpen ? theme.accent : undefined }}
+                            />
+                          </button>
+
+                          {isAiModelDropdownOpen && (
+                            <div
+                              className="absolute top-full left-0 right-0 mt-1.5 p-1.5 rounded-2xl border shadow-2xl z-50 max-h-72 overflow-y-auto space-y-1 animate-fadeIn backdrop-blur-2xl"
+                              style={{
+                                backgroundColor: isLight ? '#FFFFFF' : hexToRgba(theme.bg, 0.98),
+                                borderColor: cardBorder,
+                                boxShadow: `0 16px 36px ${isLight ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.6)'}`,
+                              }}
+                            >
+                              {COHERE_MODELS.map(model => {
+                                const isSelected = anacrusaSettings.model === model.id;
+                                return (
+                                  <button
+                                    key={model.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setAnacrusaSettings(prev => ({ ...prev, model: model.id }));
+                                      setIsAiModelDropdownOpen(false);
+                                    }}
+                                    className="w-full p-2.5 rounded-xl flex items-center justify-between transition cursor-pointer text-left hover:bg-white/5"
+                                    style={{
+                                      backgroundColor: isSelected
+                                        ? hexToRgba(theme.accent, 0.15)
+                                        : 'transparent',
+                                      borderColor: isSelected ? theme.accent : 'transparent',
+                                    }}
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <div className="text-xs font-bold flex items-center gap-1.5">
+                                        <span style={{ color: isSelected ? theme.accent : theme.text }}>
+                                          {model.name}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {isSelected && (
+                                      <Check size={14} className="shrink-0" style={{ color: theme.accent }} />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
+
+              {/* IO.NET SETTINGS */}
+              {anacrusaSettings.provider === 'ionet' && (
+                <>
+                  {/* io.net API Key Input */}
+                  <div className="space-y-2 pt-1">
+                    <label className="text-xs font-bold opacity-80 block">
+                      API-ключ io.net
+                    </label>
+
+                    <div className="relative flex items-center">
+                      <input
+                        type={showIonetKey ? 'text' : 'password'}
+                        value={anacrusaSettings.ionetApiKey || ''}
+                        onChange={e =>
+                          setAnacrusaSettings(prev => ({
+                            ...prev,
+                            ionetApiKey: e.target.value,
+                          }))
+                        }
+                        placeholder="io_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        className="w-full py-2.5 pl-3.5 pr-10 rounded-xl border text-xs font-mono outline-hidden transition"
+                        style={{
+                          backgroundColor: hexToRgba(theme.text, 0.04),
+                          borderColor: anacrusaSettings.ionetApiKey?.trim()
+                            ? hexToRgba(theme.accent, 0.5)
+                            : cardBorder,
+                          color: theme.text,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowIonetKey(prev => !prev)}
+                        className="absolute right-3 opacity-60 hover:opacity-100 transition cursor-pointer"
+                        title={showIonetKey ? 'Скрыть ключ' : 'Показать ключ'}
+                      >
+                        {showIonetKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-end text-[11px] pt-0.5">
+                      <a
+                        href="https://ai.io.net"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 font-semibold opacity-60 hover:opacity-100 hover:underline transition"
+                        style={{ color: theme.text }}
+                      >
+                        <span>Получить ключ на ai.io.net</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* io.net Model Selection Dropdown */}
+                  <div className="space-y-2 pt-1 relative" ref={modelDropdownRef}>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold opacity-80 block">
+                        Выбор модели io.net
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomIonetModel(prev => !prev)}
+                        className="text-[11px] font-semibold opacity-60 hover:opacity-100 transition cursor-pointer"
+                        style={{ color: theme.accent }}
+                      >
+                        {showCustomIonetModel ? 'Выбрать из списка' : 'Ввести ID вручную'}
+                      </button>
+                    </div>
+
+                    {showCustomIonetModel ? (
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          value={anacrusaSettings.ionetModel || 'meta-llama/Llama-3.3-70B-Instruct'}
+                          onChange={e =>
+                            setAnacrusaSettings(prev => ({
+                              ...prev,
+                              ionetModel: e.target.value,
+                            }))
+                          }
+                          placeholder="meta-llama/Llama-3.3-70B-Instruct"
+                          className="w-full py-2.5 px-3.5 rounded-xl border text-xs font-mono outline-hidden transition"
+                          style={{
+                            backgroundColor: hexToRgba(theme.text, 0.04),
+                            borderColor: cardBorder,
+                            color: theme.text,
+                          }}
+                        />
+                        <p className="text-[10px] opacity-50">
+                          Укажите любой точный идентификатор модели, поддерживаемый на ai.io.net
+                        </p>
+                      </div>
+                    ) : (
+                      (() => {
+                        const activeId = anacrusaSettings.ionetModel || 'meta-llama/Llama-3.3-70B-Instruct';
+                        const currentModel =
+                          IONET_MODELS.find(m => m.id === activeId) || {
+                            id: activeId,
+                            name: activeId,
+                            description: 'Пользовательская модель io.net',
+                          };
+                        return (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setIsAiModelDropdownOpen(prev => !prev)}
+                              className="w-full p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between shadow-xs hover:opacity-95"
+                              style={{
+                                backgroundColor: hexToRgba(theme.text, 0.04),
+                                borderColor: isAiModelDropdownOpen ? theme.accent : cardBorder,
+                                color: theme.text,
+                              }}
+                            >
+                              <div className="min-w-0 pr-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold truncate">{currentModel.name}</span>
+                                </div>
+                              </div>
+                              <ChevronDown
+                                size={16}
+                                className={`shrink-0 transition-transform duration-200 opacity-60 ${
+                                  isAiModelDropdownOpen ? 'rotate-180 opacity-100' : ''
+                                }`}
+                                style={{ color: isAiModelDropdownOpen ? theme.accent : undefined }}
+                              />
+                            </button>
+
+                            {isAiModelDropdownOpen && (
+                              <div
+                                className="absolute top-full left-0 right-0 mt-1.5 p-1.5 rounded-2xl border shadow-2xl z-50 max-h-72 overflow-y-auto space-y-1 animate-fadeIn backdrop-blur-2xl"
+                                style={{
+                                  backgroundColor: isLight ? '#FFFFFF' : hexToRgba(theme.bg, 0.98),
+                                  borderColor: cardBorder,
+                                  boxShadow: `0 16px 36px ${isLight ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.6)'}`,
+                                }}
+                              >
+                                {IONET_MODELS.map(model => {
+                                  const isSelected = (anacrusaSettings.ionetModel || 'meta-llama/Llama-3.3-70B-Instruct') === model.id;
+                                  return (
+                                    <button
+                                      key={model.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setAnacrusaSettings(prev => ({ ...prev, ionetModel: model.id }));
+                                        setIsAiModelDropdownOpen(false);
+                                      }}
+                                      className="w-full p-2.5 rounded-xl flex items-center justify-between transition cursor-pointer text-left hover:bg-white/5"
+                                      style={{
+                                        backgroundColor: isSelected
+                                          ? hexToRgba(theme.accent, 0.15)
+                                          : 'transparent',
+                                        borderColor: isSelected ? theme.accent : 'transparent',
+                                      }}
+                                    >
+                                      <div className="min-w-0 pr-2">
+                                        <div className="text-xs font-bold flex items-center gap-1.5">
+                                          <span style={{ color: isSelected ? theme.accent : theme.text }}>
+                                            {model.name}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {isSelected && (
+                                        <Check size={14} className="shrink-0" style={{ color: theme.accent }} />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Web Search Autonomy Mode Selector */}
+              <div className="space-y-2 pt-1">
+                <label className="text-xs font-bold opacity-80 block">
+                  Веб-поиск
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {/* Never */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAnacrusaSettings(prev => ({ ...prev, webSearchMode: 'never' }))
+                    }
+                    className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
+                    style={{
+                      backgroundColor:
+                        (anacrusaSettings.webSearchMode || 'ask') === 'never'
+                          ? hexToRgba(theme.accent, 0.15)
+                          : 'transparent',
+                      borderColor:
+                        (anacrusaSettings.webSearchMode || 'ask') === 'never'
+                          ? theme.accent
+                          : hexToRgba(theme.text, 0.12),
+                    }}
                   >
-                    <span>Получить ключ на tavily.com</span>
-                    <ExternalLink size={11} />
-                  </a>
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold block">Никогда</span>
+                      <p className="text-[10px] opacity-60 mt-0.5 leading-snug">
+                        ИИ не использует веб-поиск
+                      </p>
+                    </div>
+                    {(anacrusaSettings.webSearchMode || 'ask') === 'never' && (
+                      <Check size={16} className="shrink-0" style={{ color: theme.accent }} />
+                    )}
+                  </button>
+
+                  {/* Ask for confirmation */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAnacrusaSettings(prev => ({ ...prev, webSearchMode: 'ask' }))
+                    }
+                    className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
+                    style={{
+                      backgroundColor:
+                        (anacrusaSettings.webSearchMode || 'ask') === 'ask'
+                          ? hexToRgba(theme.accent, 0.15)
+                          : 'transparent',
+                      borderColor:
+                        (anacrusaSettings.webSearchMode || 'ask') === 'ask'
+                          ? theme.accent
+                          : hexToRgba(theme.text, 0.12),
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold block">Подтверждать</span>
+                      <p className="text-[10px] opacity-60 mt-0.5 leading-snug">
+                        Запрос подтверждения (Да / Нет)
+                      </p>
+                    </div>
+                    {(anacrusaSettings.webSearchMode || 'ask') === 'ask' && (
+                      <Check size={16} className="shrink-0" style={{ color: theme.accent }} />
+                    )}
+                  </button>
+
+                  {/* Automatically */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAnacrusaSettings(prev => ({ ...prev, webSearchMode: 'auto' }))
+                    }
+                    className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
+                    style={{
+                      backgroundColor:
+                        anacrusaSettings.webSearchMode === 'auto'
+                          ? hexToRgba(theme.accent, 0.15)
+                          : 'transparent',
+                      borderColor:
+                        anacrusaSettings.webSearchMode === 'auto'
+                          ? theme.accent
+                          : hexToRgba(theme.text, 0.12),
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold block">Автоматически</span>
+                      <p className="text-[10px] opacity-60 mt-0.5 leading-snug">
+                        Поиск без запроса разрешения
+                      </p>
+                    </div>
+                    {anacrusaSettings.webSearchMode === 'auto' && (
+                      <Check size={16} className="shrink-0" style={{ color: theme.accent }} />
+                    )}
+                  </button>
                 </div>
               </div>
 
-              {/* Tavily Power & Search Depth Settings */}
-              <div
-                className="p-3.5 rounded-xl border space-y-3.5"
-                style={{
-                  backgroundColor: hexToRgba(theme.text, 0.02),
-                  borderColor: hexToRgba(theme.text, 0.08),
-                }}
-              >
-                <div className="text-xs font-bold opacity-90">
-                  Настройки мощности поиска
+              {/* Temperature Slider */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold opacity-80">Креативность (Temperature)</span>
+                  <span className="font-mono font-bold" style={{ color: theme.accent }}>
+                    {anacrusaSettings.temperature.toFixed(2)}
+                  </span>
                 </div>
-
-                {/* Depth setting */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold opacity-75">Глубина поиска:</span>
-                    <span className="font-mono text-[11px] opacity-60">
-                      {webSearchSettings.searchDepth === 'advanced' ? '2 кредита / запрос' : '1 кредит / запрос'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWebSearchSettings(prev => ({ ...prev, searchDepth: 'basic' }))
-                      }
-                      className="p-2.5 rounded-xl border text-left transition cursor-pointer"
-                      style={{
-                        backgroundColor:
-                          webSearchSettings.searchDepth === 'basic'
-                            ? hexToRgba(theme.accent, 0.15)
-                            : 'transparent',
-                        borderColor:
-                          webSearchSettings.searchDepth === 'basic'
-                            ? theme.accent
-                            : hexToRgba(theme.text, 0.12),
-                      }}
-                    >
-                      <div className="text-xs font-bold">Быстрый</div>
-                      <div className="text-[10px] opacity-60 mt-0.5">1 кредит • Стандартный поиск</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWebSearchSettings(prev => ({ ...prev, searchDepth: 'advanced' }))
-                      }
-                      className="p-2.5 rounded-xl border text-left transition cursor-pointer"
-                      style={{
-                        backgroundColor:
-                          webSearchSettings.searchDepth === 'advanced'
-                            ? hexToRgba(theme.accent, 0.15)
-                            : 'transparent',
-                        borderColor:
-                          webSearchSettings.searchDepth === 'advanced'
-                            ? theme.accent
-                            : hexToRgba(theme.text, 0.12),
-                      }}
-                    >
-                      <div className="text-xs font-bold">Глубокий</div>
-                      <div className="text-[10px] opacity-60 mt-0.5">2 кредита • Анализ источников</div>
-                    </button>
-                  </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1.5"
+                  step="0.05"
+                  value={anacrusaSettings.temperature}
+                  onChange={e =>
+                    setAnacrusaSettings(prev => ({
+                      ...prev,
+                      temperature: parseFloat(e.target.value),
+                    }))
+                  }
+                  className="w-full accent-current cursor-pointer"
+                  style={{ color: theme.accent }}
+                />
+                <div className="flex justify-between text-[10px] opacity-50 font-mono">
+                  <span>0.0 (Строгий и точный)</span>
+                  <span>1.5 (Творческий)</span>
                 </div>
+              </div>
 
-                {/* Answer detail setting */}
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <div>
-                    <div className="font-semibold opacity-75">Детализация саммари:</div>
-                    <div className="text-[10px] opacity-50">Уровень подробности сгенерированного ответа</div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWebSearchSettings(prev => ({ ...prev, answerDetail: 'basic' }))
-                      }
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                        webSearchSettings.answerDetail === 'basic' ? 'shadow-xs' : 'opacity-60'
-                      }`}
-                      style={{
-                        backgroundColor:
-                          webSearchSettings.answerDetail === 'basic'
-                            ? theme.accent
-                            : hexToRgba(theme.text, 0.08),
-                        color: webSearchSettings.answerDetail === 'basic' ? '#FFFFFF' : theme.text,
-                      }}
-                    >
-                      Кратко
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWebSearchSettings(prev => ({ ...prev, answerDetail: 'advanced' }))
-                      }
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                        webSearchSettings.answerDetail === 'advanced' ? 'shadow-xs' : 'opacity-60'
-                      }`}
-                      style={{
-                        backgroundColor:
-                          webSearchSettings.answerDetail === 'advanced'
-                            ? theme.accent
-                            : hexToRgba(theme.text, 0.08),
-                        color: webSearchSettings.answerDetail === 'advanced' ? '#FFFFFF' : theme.text,
-                      }}
-                    >
-                      Подробно
-                    </button>
-                  </div>
+              {/* System Prompt */}
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-bold opacity-80 block">
+                  Пользовательские инструкции к ответам
+                </label>
+                <textarea
+                  rows={3}
+                  value={anacrusaSettings.systemPrompt}
+                  onChange={e =>
+                    setAnacrusaSettings(prev => ({
+                      ...prev,
+                      systemPrompt: e.target.value,
+                    }))
+                  }
+                  placeholder="Например: отвечай кратко, форматируй списки, выделяй важное жирным шрифтом..."
+                  className="w-full p-3 rounded-xl border text-xs outline-hidden resize-y transition"
+                  style={{
+                    backgroundColor: hexToRgba(theme.text, 0.04),
+                    borderColor: cardBorder,
+                    color: theme.text,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: Search */}
+        {activeSettingsTab === 'search' && (
+          <div className="space-y-5">
+            {/* Main Web Search Config Card */}
+            <div
+              className="p-4 sm:p-5 rounded-2xl border space-y-4 shadow-xs"
+              style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe size={18} style={{ color: theme.accent }} className="shrink-0" />
+                  <h3 className="text-sm font-extrabold">Веб-поиск</h3>
                 </div>
+              </div>
 
-                {/* Max Results setting */}
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <div>
-                    <div className="font-semibold opacity-75">Количество источников:</div>
-                    <div className="text-[10px] opacity-50">Число отображаемых ссылок на сайты</div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {[3, 5, 7, 10].map(num => (
+              {/* Provider Selection Tabs */}
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-bold opacity-80 block">
+                  Поисковая система
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Tavily Tab */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setWebSearchSettings(prev => ({ ...prev, provider: 'tavily' }))
+                    }
+                    className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between"
+                    style={{
+                      backgroundColor:
+                        webSearchSettings.provider === 'tavily'
+                          ? hexToRgba(theme.accent, 0.15)
+                          : hexToRgba(theme.text, 0.02),
+                      borderColor:
+                        webSearchSettings.provider === 'tavily'
+                          ? theme.accent
+                          : hexToRgba(theme.text, 0.12),
+                    }}
+                  >
+                    <div>
+                      <div className="text-xs font-bold flex items-center gap-1.5">
+                        <span>Tavily</span>
+                        {webSearchSettings.tavilyApiKey.trim() && (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full inline-block"
+                            style={{ backgroundColor: theme.accent }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {webSearchSettings.provider === 'tavily' && (
+                      <Check size={14} style={{ color: theme.accent }} />
+                    )}
+                  </button>
+
+                  {/* Exa Tab */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setWebSearchSettings(prev => ({ ...prev, provider: 'exa' }))
+                    }
+                    className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between"
+                    style={{
+                      backgroundColor:
+                        webSearchSettings.provider === 'exa'
+                          ? hexToRgba(theme.accent, 0.15)
+                          : hexToRgba(theme.text, 0.02),
+                      borderColor:
+                        webSearchSettings.provider === 'exa'
+                          ? theme.accent
+                          : hexToRgba(theme.text, 0.12),
+                    }}
+                  >
+                    <div>
+                      <div className="text-xs font-bold flex items-center gap-1.5">
+                        <span>Exa</span>
+                        {webSearchSettings.exaApiKey.trim() && (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full inline-block"
+                            style={{ backgroundColor: theme.accent }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {webSearchSettings.provider === 'exa' && (
+                      <Check size={14} style={{ color: theme.accent }} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* TAVILY CONFIGURATION */}
+              {webSearchSettings.provider === 'tavily' && (
+                <div className="space-y-4 pt-1 animate-fadeIn">
+                  {/* Tavily API Key Input */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold opacity-80 block">
+                      API-ключ Tavily
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type={showTavilyKey ? 'text' : 'password'}
+                        value={webSearchSettings.tavilyApiKey}
+                        onChange={e =>
+                          setWebSearchSettings(prev => ({
+                            ...prev,
+                            tavilyApiKey: e.target.value,
+                          }))
+                        }
+                        placeholder="tvly-xxxxxxxxxxxxxxxxxxxx"
+                        className="w-full py-2.5 pl-3.5 pr-10 rounded-xl border text-xs font-mono outline-hidden transition"
+                        style={{
+                          backgroundColor: hexToRgba(theme.text, 0.04),
+                          borderColor: webSearchSettings.tavilyApiKey.trim()
+                            ? hexToRgba(theme.accent, 0.5)
+                            : cardBorder,
+                          color: theme.text,
+                        }}
+                      />
                       <button
-                        key={num}
+                        type="button"
+                        onClick={() => setShowTavilyKey(prev => !prev)}
+                        className="absolute right-3 opacity-60 hover:opacity-100 transition cursor-pointer"
+                        title={showTavilyKey ? 'Скрыть ключ' : 'Показать ключ'}
+                      >
+                        {showTavilyKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-end text-[11px] pt-0.5">
+                      <a
+                        href="https://tavily.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 font-semibold opacity-60 hover:opacity-100 hover:underline transition"
+                        style={{ color: theme.text }}
+                      >
+                        <span>Получить ключ на tavily.com</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Tavily Power & Search Depth Settings */}
+                  <div
+                    className="p-3.5 rounded-xl border space-y-3.5"
+                    style={{
+                      backgroundColor: hexToRgba(theme.text, 0.02),
+                      borderColor: hexToRgba(theme.text, 0.08),
+                    }}
+                  >
+                    <div className="text-xs font-bold opacity-90">
+                      Настройки Tavily
+                    </div>
+
+                    {/* Depth setting */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold opacity-75">Глубина поиска</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, searchDepth: 'basic' }))
+                          }
+                          className="p-2.5 rounded-xl border text-left transition cursor-pointer"
+                          style={{
+                            backgroundColor:
+                              webSearchSettings.searchDepth === 'basic'
+                                ? hexToRgba(theme.accent, 0.15)
+                                : 'transparent',
+                            borderColor:
+                              webSearchSettings.searchDepth === 'basic'
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.12),
+                          }}
+                        >
+                          <div className="text-xs font-bold">Быстрый</div>
+                          <div className="text-[10px] opacity-60 mt-0.5">1 кредит</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, searchDepth: 'advanced' }))
+                          }
+                          className="p-2.5 rounded-xl border text-left transition cursor-pointer"
+                          style={{
+                            backgroundColor:
+                              webSearchSettings.searchDepth === 'advanced'
+                                ? hexToRgba(theme.accent, 0.15)
+                                : 'transparent',
+                            borderColor:
+                              webSearchSettings.searchDepth === 'advanced'
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.12),
+                          }}
+                        >
+                          <div className="text-xs font-bold">Глубокий</div>
+                          <div className="text-[10px] opacity-60 mt-0.5">2 кредита</div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Answer detail setting */}
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <div>
+                        <div className="font-semibold opacity-75">Детализация саммари</div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, answerDetail: 'basic' }))
+                          }
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            webSearchSettings.answerDetail === 'basic' ? 'shadow-xs' : 'opacity-60'
+                          }`}
+                          style={{
+                            backgroundColor:
+                              webSearchSettings.answerDetail === 'basic'
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.08),
+                            color: webSearchSettings.answerDetail === 'basic' ? '#FFFFFF' : theme.text,
+                          }}
+                        >
+                          Кратко
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, answerDetail: 'advanced' }))
+                          }
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            webSearchSettings.answerDetail === 'advanced' ? 'shadow-xs' : 'opacity-60'
+                          }`}
+                          style={{
+                            backgroundColor:
+                              webSearchSettings.answerDetail === 'advanced'
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.08),
+                            color: webSearchSettings.answerDetail === 'advanced' ? '#FFFFFF' : theme.text,
+                          }}
+                        >
+                          Подробно
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* EXA CONFIGURATION */}
+              {webSearchSettings.provider === 'exa' && (
+                <div className="space-y-4 pt-1 animate-fadeIn">
+                  {/* Exa API Key Input */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold opacity-80 block">
+                      API-ключ Exa
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type={showExaKey ? 'text' : 'password'}
+                        value={webSearchSettings.exaApiKey}
+                        onChange={e =>
+                          setWebSearchSettings(prev => ({
+                            ...prev,
+                            exaApiKey: e.target.value,
+                          }))
+                        }
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full py-2.5 pl-3.5 pr-10 rounded-xl border text-xs font-mono outline-hidden transition"
+                        style={{
+                          backgroundColor: hexToRgba(theme.text, 0.04),
+                          borderColor: webSearchSettings.exaApiKey.trim()
+                            ? hexToRgba(theme.accent, 0.5)
+                            : cardBorder,
+                          color: theme.text,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowExaKey(prev => !prev)}
+                        className="absolute right-3 opacity-60 hover:opacity-100 transition cursor-pointer"
+                        title={showExaKey ? 'Скрыть ключ' : 'Показать ключ'}
+                      >
+                        {showExaKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-end text-[11px] pt-0.5">
+                      <a
+                        href="https://dashboard.exa.ai"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 font-semibold opacity-60 hover:opacity-100 hover:underline transition"
+                        style={{ color: theme.text }}
+                      >
+                        <span>Получить ключ на exa.ai</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Exa Model & Feature Settings */}
+                  <div
+                    className="p-3.5 rounded-xl border space-y-3.5"
+                    style={{
+                      backgroundColor: hexToRgba(theme.text, 0.02),
+                      borderColor: hexToRgba(theme.text, 0.08),
+                    }}
+                  >
+                    <div className="text-xs font-bold opacity-90">
+                      Настройки Exa
+                    </div>
+
+                    {/* Model selection (Fast, Deep, Deep-reasoning) */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold opacity-75 block">
+                        Модель поиска
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {/* Fast */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, exaModel: 'fast' }))
+                          }
+                          className="p-2.5 rounded-xl border text-left transition cursor-pointer"
+                          style={{
+                            backgroundColor:
+                              webSearchSettings.exaModel === 'fast'
+                                ? hexToRgba(theme.accent, 0.15)
+                                : 'transparent',
+                            borderColor:
+                              webSearchSettings.exaModel === 'fast'
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.12),
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold">Fast</span>
+                            <span
+                              className="text-[10px] font-mono font-semibold"
+                              style={{ color: theme.accent }}
+                            >
+                              7$ / 1k
+                            </span>
+                          </div>
+                        </button>
+
+                        {/* Deep */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, exaModel: 'deep' }))
+                          }
+                          className="p-2.5 rounded-xl border text-left transition cursor-pointer"
+                          style={{
+                            backgroundColor:
+                              webSearchSettings.exaModel === 'deep'
+                                ? hexToRgba(theme.accent, 0.15)
+                                : 'transparent',
+                            borderColor:
+                              webSearchSettings.exaModel === 'deep'
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.12),
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold">Deep</span>
+                            <span
+                              className="text-[10px] font-mono font-semibold"
+                              style={{ color: theme.accent }}
+                            >
+                              12$ / 1k
+                            </span>
+                          </div>
+                        </button>
+
+                        {/* Deep-reasoning */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, exaModel: 'deep-reasoning' }))
+                          }
+                          className="p-2.5 rounded-xl border text-left transition cursor-pointer"
+                          style={{
+                            backgroundColor:
+                              webSearchSettings.exaModel === 'deep-reasoning'
+                                ? hexToRgba(theme.accent, 0.15)
+                                : 'transparent',
+                            borderColor:
+                              webSearchSettings.exaModel === 'deep-reasoning'
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.12),
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold">Deep-reasoning</span>
+                            <span
+                              className="text-[10px] font-mono font-semibold"
+                              style={{ color: theme.accent }}
+                            >
+                              15$ / 1k
+                            </span>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Exa Answer toggle (5$ / 1k) */}
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold opacity-90">Генерация ответа</span>
+                        <span
+                          className="text-[10px] font-mono font-semibold whitespace-nowrap"
+                          style={{ color: theme.accent }}
+                        >
+                          +5$ / 1k
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, exaIncludeAnswer: false }))
+                          }
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            !webSearchSettings.exaIncludeAnswer ? 'shadow-xs' : 'opacity-60'
+                          }`}
+                          style={{
+                            backgroundColor:
+                              !webSearchSettings.exaIncludeAnswer
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.08),
+                            color: !webSearchSettings.exaIncludeAnswer ? '#FFFFFF' : theme.text,
+                          }}
+                        >
+                          Выкл
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWebSearchSettings(prev => ({ ...prev, exaIncludeAnswer: true }))
+                          }
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            webSearchSettings.exaIncludeAnswer ? 'shadow-xs' : 'opacity-60'
+                          }`}
+                          style={{
+                            backgroundColor:
+                              webSearchSettings.exaIncludeAnswer
+                                ? theme.accent
+                                : hexToRgba(theme.text, 0.08),
+                            color: webSearchSettings.exaIncludeAnswer ? '#FFFFFF' : theme.text,
+                          }}
+                        >
+                          Вкл
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* LOCAL SEMANTIC SEARCH CARD */}
+            <div
+              className="p-4 sm:p-5 rounded-2xl border space-y-4 shadow-xs"
+              style={{ backgroundColor: cardBg, borderColor: cardBorder }}
+            >
+              {/* Header with Switch */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <FileSearch size={18} style={{ color: theme.accent }} className="shrink-0" />
+                    <h3 className="text-sm font-bold">Семантический поиск</h3>
+                  </div>
+                  <p className="text-[11px] opacity-70">
+                    Локальный поиск по смыслу фраз. Работает оффлайн и приватно, но может временно нагружать процессор и батарею.
+                  </p>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={semanticSearchSettings.enabled}
+                    onChange={e =>
+                      setSemanticSearchSettings(prev => ({ ...prev, enabled: e.target.checked }))
+                    }
+                    className="sr-only peer"
+                  />
+                  <div
+                    className="w-11 h-6 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"
+                    style={{
+                      backgroundColor: semanticSearchSettings.enabled
+                        ? theme.accent
+                        : hexToRgba(theme.text, 0.2),
+                    }}
+                  />
+                </label>
+              </div>
+
+              {semanticSearchSettings.enabled && (
+                <div className="space-y-4 pt-1">
+                  {/* Models list */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold opacity-80 block">
+                      Модель эмбеддингов
+                    </label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {HF_SEMANTIC_MODELS.map(model => {
+                        const isSelected = semanticSearchSettings.modelRepo === model.repo;
+                        const isCached = !!cachedModels[model.repo];
+                        const isThisDownloading = downloadingRepo === model.repo;
+
+                        return (
+                          <div
+                            key={model.id}
+                            className="p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition"
+                            style={{
+                              backgroundColor: isSelected
+                                ? hexToRgba(theme.accent, 0.08)
+                                : hexToRgba(theme.text, 0.02),
+                              borderColor: isSelected ? theme.accent : hexToRgba(theme.text, 0.1),
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-bold truncate">{model.name}</span>
+                                </div>
+                                <span className="text-[10px] opacity-60">~{model.sizeMB} МБ</span>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="pt-1 flex items-center justify-between gap-1.5">
+                              {isThisDownloading ? (
+                                <div className="w-full space-y-1">
+                                  <div className="flex items-center justify-between text-[10px]">
+                                    <span className="flex items-center gap-1 text-amber-500 font-medium">
+                                      <Loader2 size={11} className="animate-spin" />
+                                      Загрузка
+                                    </span>
+                                    <span>{modelProgress.progress}%</span>
+                                  </div>
+                                  <div className="w-full h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                                    <div
+                                      className="h-full transition-all duration-200"
+                                      style={{
+                                        width: `${modelProgress.progress}%`,
+                                        backgroundColor: theme.accent,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              ) : isCached ? (
+                                <div className="flex items-center justify-between w-full gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSemanticSearchSettings(prev => ({
+                                        ...prev,
+                                        modelRepo: model.repo,
+                                      }))
+                                    }
+                                    className="flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer border"
+                                    style={{
+                                      backgroundColor: isSelected
+                                        ? theme.accent
+                                        : hexToRgba(theme.text, 0.05),
+                                      borderColor: isSelected
+                                        ? theme.accent
+                                        : hexToRgba(theme.text, 0.15),
+                                      color: isSelected ? '#FFFFFF' : theme.text,
+                                    }}
+                                  >
+                                    {isSelected ? (
+                                      <>
+                                        <Check size={13} />
+                                        <span>Активна</span>
+                                      </>
+                                    ) : (
+                                      <span>Выбрать</span>
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteModel(model.repo)}
+                                    className="p-1.5 rounded-lg opacity-50 hover:opacity-100 hover:text-red-500 transition cursor-pointer"
+                                    title="Удалить модель"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadModel(model.repo)}
+                                  className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer border"
+                                  style={{
+                                    backgroundColor: hexToRgba(theme.accent, 0.12),
+                                    borderColor: hexToRgba(theme.accent, 0.3),
+                                    color: theme.accent,
+                                  }}
+                                >
+                                  <Download size={13} />
+                                  <span>Скачать</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Trigger Mode */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold opacity-80 block">
+                      Режим срабатывания
+                    </label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
                         type="button"
                         onClick={() =>
-                          setWebSearchSettings(prev => ({ ...prev, maxResults: num }))
+                          setSemanticSearchSettings(prev => ({ ...prev, triggerMode: 'manual' }))
                         }
-                        className={`w-8 h-8 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
-                          webSearchSettings.maxResults === num ? 'shadow-xs' : 'opacity-60'
-                        }`}
+                        className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
                         style={{
                           backgroundColor:
-                            webSearchSettings.maxResults === num
+                            semanticSearchSettings.triggerMode === 'manual'
+                              ? hexToRgba(theme.accent, 0.12)
+                              : 'transparent',
+                          borderColor:
+                            semanticSearchSettings.triggerMode === 'manual'
                               ? theme.accent
-                              : hexToRgba(theme.text, 0.08),
-                          color: webSearchSettings.maxResults === num ? '#FFFFFF' : theme.text,
+                              : hexToRgba(theme.text, 0.12),
                         }}
                       >
-                        {num}
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold block">По кнопке</span>
+                          <span className="text-[10px] opacity-60 block mt-0.5 leading-snug">
+                            Экономит заряд батареи
+                          </span>
+                        </div>
+                        {semanticSearchSettings.triggerMode === 'manual' && (
+                          <Check size={14} className="shrink-0" style={{ color: theme.accent }} />
+                        )}
                       </button>
-                    ))}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSemanticSearchSettings(prev => ({ ...prev, triggerMode: 'auto' }))
+                        }
+                        className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
+                        style={{
+                          backgroundColor:
+                            semanticSearchSettings.triggerMode === 'auto'
+                              ? hexToRgba(theme.accent, 0.12)
+                              : 'transparent',
+                          borderColor:
+                            semanticSearchSettings.triggerMode === 'auto'
+                              ? theme.accent
+                              : hexToRgba(theme.text, 0.12),
+                        }}
+                      >
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold block">Автоматически</span>
+                          <span className="text-[10px] opacity-60 block mt-0.5 leading-snug">
+                            Сразу при поиске
+                          </span>
+                        </div>
+                        {semanticSearchSettings.triggerMode === 'auto' && (
+                          <Check size={14} className="shrink-0" style={{ color: theme.accent }} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Indexing Mode */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold opacity-80 block">
+                      Индексация заметок
+                    </label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSemanticSearchSettings(prev => ({ ...prev, indexingMode: 'auto' }))
+                        }
+                        className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
+                        style={{
+                          backgroundColor:
+                            (semanticSearchSettings.indexingMode || 'auto') === 'auto'
+                              ? hexToRgba(theme.accent, 0.12)
+                              : 'transparent',
+                          borderColor:
+                            (semanticSearchSettings.indexingMode || 'auto') === 'auto'
+                              ? theme.accent
+                              : hexToRgba(theme.text, 0.12),
+                        }}
+                      >
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold block">Автоматически</span>
+                          <span className="text-[10px] opacity-60 block mt-0.5 leading-snug">
+                            Векторы создаются на лету
+                          </span>
+                        </div>
+                        {(semanticSearchSettings.indexingMode || 'auto') === 'auto' && (
+                          <Check size={14} className="shrink-0" style={{ color: theme.accent }} />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSemanticSearchSettings(prev => ({ ...prev, indexingMode: 'manual' }))
+                        }
+                        className="p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between gap-2"
+                        style={{
+                          backgroundColor:
+                            semanticSearchSettings.indexingMode === 'manual'
+                              ? hexToRgba(theme.accent, 0.12)
+                              : 'transparent',
+                          borderColor:
+                            semanticSearchSettings.indexingMode === 'manual'
+                              ? theme.accent
+                              : hexToRgba(theme.text, 0.12),
+                        }}
+                      >
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold block">Вручную</span>
+                          <span className="text-[10px] opacity-60 block mt-0.5 leading-snug">
+                            Только по кнопке «Индексировать»
+                          </span>
+                        </div>
+                        {semanticSearchSettings.indexingMode === 'manual' && (
+                          <Check size={14} className="shrink-0" style={{ color: theme.accent }} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Index Status & Action Row */}
+                  <div
+                    className="p-3 rounded-xl border flex items-center justify-between flex-wrap gap-2 text-xs"
+                    style={{
+                      backgroundColor: hexToRgba(theme.text, 0.02),
+                      borderColor: hexToRgba(theme.text, 0.08),
+                    }}
+                  >
+                    <div className="text-[11px] opacity-75">
+                      Индекс: <strong>{indexedNotesCount}</strong> из <strong>{notes.filter(n => !n.isPrivate).length}</strong> заметок
+                      {reindexMessage && (
+                        <span className="ml-2 font-bold text-emerald-500">{reindexMessage}</span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleReindexNotes}
+                        disabled={isReindexing}
+                        className="py-1 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 border transition cursor-pointer hover:opacity-85 disabled:opacity-50"
+                        style={{
+                          backgroundColor: hexToRgba(theme.accent, 0.12),
+                          borderColor: hexToRgba(theme.accent, 0.3),
+                          color: theme.accent,
+                        }}
+                      >
+                        {isReindexing ? (
+                          <>
+                            <Loader2 size={12} className="animate-spin" />
+                            <span>Индексация...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw size={12} />
+                            <span>Индексировать</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await semanticSearchService.clearModelVectors(semanticSearchSettings.modelRepo);
+                          setIndexedNotesCount(0);
+                        }}
+                        className="py-1 px-2 rounded-lg text-xs border opacity-60 hover:opacity-100 transition cursor-pointer"
+                        style={{ borderColor: hexToRgba(theme.text, 0.15) }}
+                        title="Очистить кэш векторов"
+                      >
+                        Очистить
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -1260,10 +3878,7 @@ export const SettingsPage: React.FC = () => {
         {activeSettingsTab === 'other' && (
           <div className="space-y-4">
             <div className="p-4 rounded-2xl border space-y-3" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
-              <div className="text-sm font-bold">Наши сообщества и соцсети</div>
-              <p className="text-xs opacity-70 leading-relaxed">
-                Следите за обновлениями, новостями и делитесь впечатлениями на официальных страницах Veris Note.
-              </p>
+              <div className="text-sm font-bold">{tr('Наши сообщества и соцсети', 'Our Communities & Socials')}</div>
 
               <div className="space-y-2 pt-1">
                 {/* YouTube */}
@@ -1271,23 +3886,15 @@ export const SettingsPage: React.FC = () => {
                   href="https://youtube.com/@verisnote"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-between p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
                   style={{
                     borderColor: cardBorder,
                     backgroundColor: hexToRgba(theme.text, 0.03),
                     color: theme.text,
                   }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-500/15 text-red-500 shrink-0">
-                      <Youtube size={18} />
-                    </div>
-                    <div>
-                      <div className="font-bold text-xs">YouTube</div>
-                      <div className="text-[10px] opacity-60">@verisnote</div>
-                    </div>
-                  </div>
-                  <ExternalLink size={14} className="opacity-40" />
+                  <Youtube size={20} className="text-red-500 shrink-0" />
+                  <span className="font-bold text-xs">YouTube</span>
                 </a>
 
                 {/* TikTok */}
@@ -1295,23 +3902,15 @@ export const SettingsPage: React.FC = () => {
                   href="https://www.tiktok.com/@verisnote?_r=1&_t=ZS-98wNXXyC8ON"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-between p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
                   style={{
                     borderColor: cardBorder,
                     backgroundColor: hexToRgba(theme.text, 0.03),
                     color: theme.text,
                   }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-cyan-500/15 text-cyan-400 shrink-0">
-                      <Video size={18} />
-                    </div>
-                    <div>
-                      <div className="font-bold text-xs">TikTok</div>
-                      <div className="text-[10px] opacity-60">@verisnote</div>
-                    </div>
-                  </div>
-                  <ExternalLink size={14} className="opacity-40" />
+                  <Video size={20} className="text-cyan-400 shrink-0" />
+                  <span className="font-bold text-xs">TikTok</span>
                 </a>
 
                 {/* Instagram */}
@@ -1319,23 +3918,15 @@ export const SettingsPage: React.FC = () => {
                   href="https://www.instagram.com/verisnote?igsh=MXIwbG95N3ZhOW5icg=="
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-between p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
                   style={{
                     borderColor: cardBorder,
                     backgroundColor: hexToRgba(theme.text, 0.03),
                     color: theme.text,
                   }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-pink-500/15 text-pink-500 shrink-0">
-                      <Instagram size={18} />
-                    </div>
-                    <div>
-                      <div className="font-bold text-xs">Instagram</div>
-                      <div className="text-[10px] opacity-60">@verisnote</div>
-                    </div>
-                  </div>
-                  <ExternalLink size={14} className="opacity-40" />
+                  <Instagram size={20} className="text-pink-500 shrink-0" />
+                  <span className="font-bold text-xs">Instagram</span>
                 </a>
 
                 {/* Pinterest */}
@@ -1343,23 +3934,15 @@ export const SettingsPage: React.FC = () => {
                   href="https://pin.it/1MhiRppt2"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-between p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
                   style={{
                     borderColor: cardBorder,
                     backgroundColor: hexToRgba(theme.text, 0.03),
                     color: theme.text,
                   }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-600/15 text-red-600 shrink-0">
-                      <Pin size={18} />
-                    </div>
-                    <div>
-                      <div className="font-bold text-xs">Pinterest</div>
-                      <div className="text-[10px] opacity-60">pin.it/1MhiRppt2</div>
-                    </div>
-                  </div>
-                  <ExternalLink size={14} className="opacity-40" />
+                  <Pin size={20} className="text-red-600 shrink-0" />
+                  <span className="font-bold text-xs">Pinterest</span>
                 </a>
 
                 {/* Telegram */}
@@ -1367,23 +3950,15 @@ export const SettingsPage: React.FC = () => {
                   href="https://t.me/VerisNote"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-between p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border text-xs font-semibold hover:opacity-85 active:scale-[0.99] transition cursor-pointer"
                   style={{
                     borderColor: cardBorder,
                     backgroundColor: hexToRgba(theme.text, 0.03),
                     color: theme.text,
                   }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-sky-500/15 text-sky-400 shrink-0">
-                      <Send size={18} />
-                    </div>
-                    <div>
-                      <div className="font-bold text-xs">Telegram-канал</div>
-                      <div className="text-[10px] opacity-60">t.me/VerisNote</div>
-                    </div>
-                  </div>
-                  <ExternalLink size={14} className="opacity-40" />
+                  <Send size={20} className="text-sky-400 shrink-0" />
+                  <span className="font-bold text-xs">{tr('Telegram-канал', 'Telegram Channel')}</span>
                 </a>
               </div>
             </div>
@@ -1498,6 +4073,24 @@ export const SettingsPage: React.FC = () => {
           onClose={() => setPinModalMode(null)}
         />
       )}
+
+      {/* Theme Registry and Filter Submenu Modal */}
+      <ThemeRegistryModal
+        isOpen={isThemeRegistryOpen}
+        onClose={() => setIsThemeRegistryOpen(false)}
+        currentTheme={theme}
+        onSelectTheme={selected => {
+          setTheme(selected);
+        }}
+        filters={themeFilters}
+        onFiltersChange={setThemeFilters}
+      />
+
+      {/* Theme Scheduler Modal */}
+      <ThemeSchedulerModal
+        isOpen={isThemeSchedulerOpen}
+        onClose={() => setIsThemeSchedulerOpen(false)}
+      />
     </div>
   );
 };

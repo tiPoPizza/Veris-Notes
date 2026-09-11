@@ -938,13 +938,8 @@ export const TaskListModal: React.FC = () => {
                           <Edit2 size={11} />
                         </button>
 
-                        {/* Separated delete button on far right to prevent misclicks */}
-                        <div
-                          className="flex items-center pl-1 pr-1.5 border-l py-1"
-                          style={{
-                            borderColor: isSelected ? hexToRgba(tag.color, 0.3) : hexToRgba(theme.text, 0.1),
-                          }}
-                        >
+                        {/* Delete button on far right */}
+                        <div className="flex items-center pr-1.5 py-1">
                           <button
                             type="button"
                             onClick={e => {
@@ -983,10 +978,7 @@ export const TaskListModal: React.FC = () => {
                     }}
                   >
                     <div className="flex items-center justify-between text-xs font-bold">
-                      <span className="flex items-center gap-1.5">
-                        <TagIcon size={13} style={{ color: newTagColor }} />
-                        <span>{editingTagId ? 'Настройка тега' : 'Новый тег'}</span>
-                      </span>
+                      <span>{editingTagId ? 'Настройка тега' : 'Новый тег'}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1025,7 +1017,7 @@ export const TaskListModal: React.FC = () => {
                       label="Цвет тега"
                     />
 
-                    <div className="flex items-center justify-end gap-2 pt-1 border-t" style={{ borderColor: hexToRgba(theme.text, 0.08) }}>
+                    <div className="flex items-center justify-end gap-2 pt-1">
                       <button
                         type="button"
                         onClick={() => {

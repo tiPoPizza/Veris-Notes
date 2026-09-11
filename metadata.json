@@ -1,6 +1,6 @@
 {
   "name": "Заметки Veris",
   "description": "Элегантное приложение для заметок и задач Veris с богатой палитрой тем и поддержкой ИИ.",
-  "requestFramePermissions": ["microphone"],
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
