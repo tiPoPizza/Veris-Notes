@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useApp, COHERE_MODELS, IONET_MODELS } from '../context/AppContext';
 import { getTranslation } from '../i18n';
 import { THEME_CATEGORIES, isLightColor, hexToRgba } from '../themes';
@@ -66,12 +66,16 @@ import {
   CopyPlus,
   ArrowUpDown,
   Tag as TagIcon,
+  Maximize2,
+  HardDrive,
+  Brain,
 } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
 import { CustomTimePicker } from './CustomTimePicker';
 import { PinModal, PinModalMode } from './PinModal';
 import { FONT_FAMILY_OPTIONS } from '../utils/fonts';
-import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS, NoteTileActionId, ALL_NOTE_TILE_ACTIONS } from '../types';
+import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS, NoteTileActionId, ALL_NOTE_TILE_ACTIONS, EditorQuickActionId, ALL_EDITOR_QUICK_ACTIONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS } from '../types';
+import { calculateStorageBreakdown, StorageBreakdownResult, formatBytes } from '../utils/storageBreakdown';
 import {
   ThemeRegistryModal,
   ThemeFilters,
@@ -85,8 +89,9 @@ import {
   semanticSearchService,
   ModelDownloadProgress,
 } from '../services/semanticSearch';
-import { stripHtmlTags } from '../utils/textUtils';
+import { stripHtmlTags, isColorLight } from '../utils/textUtils';
 import { createSettingsTranslator } from '../utils/settingsTranslations';
+import { ColorPaletteModal } from './ColorPaletteModal';
 
 const LINE_HEIGHT_OPTIONS = [
   { value: 1.2, label: '1.2' },
@@ -143,6 +148,21 @@ const NOTE_TILE_ACTION_OPTIONS: Array<{
   { id: 'tag', label: 'Добавить тег', desc: 'Прикрепление и создание категорий-тегов', icon: TagIcon },
   { id: 'export', label: 'Экспорт', desc: 'Экспорт заметки в файл (TXT, MD, PDF)', icon: Download },
   { id: 'delete', label: 'Корзина', desc: 'Удаление заметки в корзину', icon: Trash2 },
+];
+
+const EDITOR_QUICK_ACTION_OPTIONS: Array<{
+  id: EditorQuickActionId;
+  label: string;
+  desc: string;
+  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
+}> = [
+  { id: 'focusMode', label: 'Фокус мод', desc: 'Полноэкранный режим письма без отвлекающих элементов', icon: Maximize2 },
+  { id: 'pin', label: 'Закрепить', desc: 'Закрепление или открепление текущей заметки', icon: Pin },
+  { id: 'tag', label: 'Добавить тег', desc: 'Управление метками и тегами открытой заметки', icon: TagIcon },
+  { id: 'block', label: 'В блок', desc: 'Перемещение заметки в блок или сменить блок', icon: Layers },
+  { id: 'export', label: 'Экспорт', desc: 'Экспорт заметки в файл (DOCX, TXT, PDF и др.)', icon: Download },
+  { id: 'private', label: 'В приват', desc: 'Перемещение заметки в защищённое пространство', icon: Shield },
+  { id: 'delete', label: 'В корзину', desc: 'Удаление заметки в корзину', icon: Trash2 },
 ];
 
 export const SettingsPage: React.FC = () => {
@@ -229,6 +249,50 @@ export const SettingsPage: React.FC = () => {
   const [isNoteDisplayOpen, setIsNoteDisplayOpen] = useState(false);
   const [isFormattingButtonsOpen, setIsFormattingButtonsOpen] = useState(false);
   const [isNoteActionButtonsOpen, setIsNoteActionButtonsOpen] = useState(false);
+  const [isEditorQuickActionsOpen, setIsEditorQuickActionsOpen] = useState(false);
+
+  // Highlight colors customization state
+  const [editingHighlightIndex, setEditingHighlightIndex] = useState<number | null>(null);
+
+  // Storage breakdown state
+  const [storageBreakdown, setStorageBreakdown] = useState<StorageBreakdownResult | null>(null);
+  const [isLoadingStorage, setIsLoadingStorage] = useState<boolean>(false);
+
+  const loadStorageData = useCallback(async () => {
+    setIsLoadingStorage(true);
+    try {
+      const res = await calculateStorageBreakdown();
+      setStorageBreakdown(res);
+    } catch (err) {
+      console.error('Failed to calculate storage breakdown', err);
+    } finally {
+      setIsLoadingStorage(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSettingsTab === 'data') {
+      loadStorageData();
+    }
+  }, [activeSettingsTab, loadStorageData]);
+
+  const activeHighlightColors = useMemo(() => {
+    if (quickSettings.customHighlightColors && quickSettings.customHighlightColors.length === 8) {
+      return quickSettings.customHighlightColors;
+    }
+    return DEFAULT_PASTEL_HIGHLIGHT_COLORS.map(c => c.color);
+  }, [quickSettings.customHighlightColors]);
+
+  const handleSelectHighlightColor = useCallback((slotIndex: number, newColor: string) => {
+    const next = [...activeHighlightColors];
+    next[slotIndex] = newColor;
+    setQuickSettings(prev => ({ ...prev, customHighlightColors: next }));
+  }, [activeHighlightColors, setQuickSettings]);
+
+  const handleResetAllHighlightColors = useCallback(() => {
+    const next = DEFAULT_PASTEL_HIGHLIGHT_COLORS.map(c => c.color);
+    setQuickSettings(prev => ({ ...prev, customHighlightColors: next }));
+  }, [setQuickSettings]);
 
   const tr = useMemo(() => createSettingsTranslator(language), [language]);
 
@@ -242,6 +306,14 @@ export const SettingsPage: React.FC = () => {
 
   const noteTileActionOptions = useMemo(() => {
     return NOTE_TILE_ACTION_OPTIONS.map(opt => ({
+      ...opt,
+      label: tr(opt.label),
+      desc: tr(opt.desc),
+    }));
+  }, [tr]);
+
+  const editorQuickActionOptions = useMemo(() => {
+    return EDITOR_QUICK_ACTION_OPTIONS.map(opt => ({
       ...opt,
       label: tr(opt.label),
       desc: tr(opt.desc),
@@ -762,28 +834,6 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Uppercase block names toggle */}
-              <div
-                className="flex items-center justify-between text-xs font-semibold pt-3 border-t cursor-pointer gap-4"
-                style={{ borderColor: cardBorder }}
-                onClick={() => setQuickSettings(prev => ({ ...prev, uppercaseBlockNames: !prev.uppercaseBlockNames }))}
-              >
-                <div className="flex-1 pr-4">
-                  <div>{tr('Названия блоков ЗАГЛАВНЫМИ')}</div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать заголовки блоков капсом или в обычном регистре')}</div>
-                </div>
-                <div
-                  className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
-                    quickSettings.uppercaseBlockNames ? 'justify-end' : 'justify-start'
-                  }`}
-                  style={{
-                    backgroundColor: quickSettings.uppercaseBlockNames ? theme.accent : hexToRgba(theme.text, 0.2),
-                  }}
-                >
-                  <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
-                </div>
-              </div>
-
               {/* Tile Display Mode (Отображение плиток) */}
               <div className="flex flex-wrap sm:flex-nowrap items-center justify-between text-xs font-semibold pt-3 border-t gap-3" style={{ borderColor: cardBorder }}>
                 <div className="flex-1 min-w-[140px] pr-2">
@@ -801,10 +851,35 @@ export const SettingsPage: React.FC = () => {
 
               {/* Sidebar Tabs Display & Sequence (Вкладки бокового меню: Заметки / Задачи / Канбан / Календарь) */}
               <div className="pt-4 border-t space-y-3" style={{ borderColor: cardBorder }}>
-                <div>
-                  <div className="text-xs font-bold">{tr('Вкладки бокового меню')}</div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5">
-                    {tr('Выберите отображаемые вкладки и настройте их последовательность стрелками. Отключенные вкладки будут доступны через меню «...»')}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-bold">{tr('Вкладки бокового меню')}</div>
+                    <div className="text-[10px] opacity-50 font-normal mt-0.5">
+                      {tr('Настройте видимость и порядок вкладок')}
+                    </div>
+                  </div>
+                  {/* Master Toggle for Sidebar Tabs Bar */}
+                  <div
+                    onClick={() =>
+                      setQuickSettings(prev => ({
+                        ...prev,
+                        showSidebarTabs: prev.showSidebarTabs === false ? true : false,
+                      }))
+                    }
+                    className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors shrink-0 ${
+                      quickSettings.showSidebarTabs !== false ? 'justify-end' : 'justify-start'
+                    }`}
+                    style={{
+                      backgroundColor:
+                        quickSettings.showSidebarTabs !== false
+                          ? theme.accent
+                          : isLight
+                          ? '#E5E7EB'
+                          : 'rgba(255, 255, 255, 0.2)',
+                    }}
+                    title={quickSettings.showSidebarTabs !== false ? 'Панель вкладок включена' : 'Панель вкладок скрыта'}
+                  >
+                    <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
                   </div>
                 </div>
 
@@ -818,7 +893,7 @@ export const SettingsPage: React.FC = () => {
                   ];
 
                   const currentActiveTabs: SidebarTabId[] =
-                    quickSettings.sidebarTabs && quickSettings.sidebarTabs.length > 0
+                    quickSettings.sidebarTabs !== undefined
                       ? quickSettings.sidebarTabs
                       : ['notes', 'tasks'];
 
@@ -833,7 +908,6 @@ export const SettingsPage: React.FC = () => {
                   const handleToggleTab = (tabId: SidebarTabId) => {
                     const isCurrentlyActive = currentActiveTabs.includes(tabId);
                     if (isCurrentlyActive) {
-                      if (currentActiveTabs.length <= 1) return; // Keep at least 1 tab
                       const nextTabs = currentActiveTabs.filter(t => t !== tabId);
                       setQuickSettings(prev => ({ ...prev, sidebarTabs: nextTabs }));
                     } else {
@@ -1725,17 +1799,8 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => setIsLaunchScreenOpen(prev => !prev)}
                 className="w-full flex items-center justify-between text-left cursor-pointer select-none"
               >
-                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                <div className="flex items-center gap-2 min-w-0 pr-2">
                   <span className="text-xs font-bold opacity-85">{tr('Что открывать при запуске')}</span>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0 truncate max-w-[160px]"
-                    style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
-                  >
-                    {launchScreen === 'notes' ? tr('Список заметок') :
-                     launchScreen === 'editor' ? tr('Последняя заметка') :
-                     launchScreen === 'tasks' ? tr('Список задач') :
-                     launchScreen === 'kanban' ? tr('Канбан') : 'Anacrusa'}
-                  </span>
                 </div>
                 <div className="opacity-60 hover:opacity-100 transition shrink-0">
                   <ChevronDown
@@ -1747,56 +1812,35 @@ export const SettingsPage: React.FC = () => {
               </button>
 
               {isLaunchScreenOpen && (
-                <div className="rounded-xl border overflow-hidden pt-1 animate-fadeIn" style={{ borderColor: cardBorder }}>
-                  {/* Option 1: Список заметок */}
-                  <button
-                    onClick={() => setLaunchScreen('notes')}
-                    className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
-                    style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'notes' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
-                  >
-                    <div className="text-xs font-semibold">{tr('Список заметок')}</div>
-                    {launchScreen === 'notes' && <Check size={16} style={{ color: theme.accent }} />}
-                  </button>
-
-                  {/* Option 2: Последняя заметка */}
-                  <button
-                    onClick={() => setLaunchScreen('editor')}
-                    className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
-                    style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'editor' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
-                  >
-                    <div className="text-xs font-semibold">{tr('Последняя заметка')}</div>
-                    {launchScreen === 'editor' && <Check size={16} style={{ color: theme.accent }} />}
-                  </button>
-
-                  {/* Option 3: Список задач */}
-                  <button
-                    onClick={() => setLaunchScreen('tasks')}
-                    className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
-                    style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'tasks' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
-                  >
-                    <div className="text-xs font-semibold">{tr('Список задач')}</div>
-                    {launchScreen === 'tasks' && <Check size={16} style={{ color: theme.accent }} />}
-                  </button>
-
-                  {/* Option 4: Канбан */}
-                  <button
-                    onClick={() => setLaunchScreen('kanban')}
-                    className="w-full flex items-center justify-between p-3.5 border-b text-left hover:opacity-80 transition cursor-pointer"
-                    style={{ borderColor: cardBorder, backgroundColor: launchScreen === 'kanban' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
-                  >
-                    <div className="text-xs font-semibold">{tr('Канбан')}</div>
-                    {launchScreen === 'kanban' && <Check size={16} style={{ color: theme.accent }} />}
-                  </button>
-
-                  {/* Option 5: Anacrusa */}
-                  <button
-                    onClick={() => setLaunchScreen('anacrusa')}
-                    className="w-full flex items-center justify-between p-3.5 text-left hover:opacity-80 transition cursor-pointer"
-                    style={{ backgroundColor: launchScreen === 'anacrusa' ? hexToRgba(theme.accent, 0.08) : 'transparent' }}
-                  >
-                    <div className="text-xs font-semibold">Anacrusa</div>
-                    {launchScreen === 'anacrusa' && <Check size={16} style={{ color: theme.accent }} />}
-                  </button>
+                <div className="rounded-xl border overflow-hidden animate-fadeIn" style={{ borderColor: cardBorder }}>
+                  {[
+                    { id: 'notes', label: tr('Список заметок') },
+                    { id: 'editor', label: tr('Последняя заметка') },
+                    { id: 'tasks', label: tr('Список задач') },
+                    { id: 'kanban', label: tr('Канбан') },
+                    { id: 'anacrusa', label: 'Anacrusa' },
+                  ].map((item, idx, arr) => {
+                    const isSelected = launchScreen === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setLaunchScreen(item.id as any)}
+                        className={`w-full flex items-center justify-between p-3.5 text-left transition cursor-pointer ${
+                          idx < arr.length - 1 ? 'border-b' : ''
+                        }`}
+                        style={{
+                          borderColor: cardBorder,
+                          backgroundColor: isSelected ? hexToRgba(theme.accent, 0.15) : 'transparent',
+                          color: isSelected ? theme.accent : theme.text,
+                        }}
+                      >
+                        <div className={`text-xs ${isSelected ? 'font-bold' : 'font-semibold'}`}>
+                          {item.label}
+                        </div>
+                        {isSelected && <Check size={16} style={{ color: theme.accent }} strokeWidth={2.5} />}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1810,12 +1854,6 @@ export const SettingsPage: React.FC = () => {
               >
                 <div className="flex items-center gap-2.5 min-w-0 pr-2">
                   <span className="text-xs font-bold opacity-85">{tr('Типографика и оформление')}</span>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
-                    style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
-                  >
-                    {quickSettings.fontSize}px • {quickSettings.lineHeight || 1.6}
-                  </span>
                 </div>
                 <div className="opacity-60 hover:opacity-100 transition shrink-0">
                   <ChevronDown
@@ -1882,12 +1920,6 @@ export const SettingsPage: React.FC = () => {
               >
                 <div className="flex items-center gap-2.5 min-w-0 pr-2">
                   <span className="text-xs font-bold opacity-85">{tr('Отображение в заметках')}</span>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
-                    style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
-                  >
-                    {[quickSettings.showCharCount, quickSettings.showWordCount, quickSettings.showDate, quickSettings.oneTimeFormatting].filter(Boolean).length} / 4
-                  </span>
                 </div>
                 <div className="opacity-60 hover:opacity-100 transition shrink-0">
                   <ChevronDown
@@ -2000,12 +2032,6 @@ export const SettingsPage: React.FC = () => {
                 <div className="flex-1 min-w-0 pr-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold opacity-85">{tr('Кнопки меню форматирования')}</span>
-                    <span
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
-                      style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
-                    >
-                      {(quickSettings.formattingToolbarButtons || ALL_FORMATTING_TOOLBAR_BUTTONS).length} {tr('активных')}
-                    </span>
                   </div>
                   <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">
                     {tr('Выберите, какие кнопки отображать во всплывающем меню при выделении текста в заметке')}
@@ -2092,12 +2118,6 @@ export const SettingsPage: React.FC = () => {
                 <div className="flex-1 min-w-0 pr-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold opacity-85">{tr('Кнопки меню заметки')}</span>
-                    <span
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0"
-                      style={{ backgroundColor: hexToRgba(theme.accent, 0.12), color: theme.accent }}
-                    >
-                      {(quickSettings.noteTileActions || ALL_NOTE_TILE_ACTIONS).length} {tr('активных')}
-                    </span>
                   </div>
                   <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">
                     {tr('Выберите, какие кнопки отображать во всплывающем меню действий с заметкой')}
@@ -2164,6 +2184,153 @@ export const SettingsPage: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Editor Quick Actions (Кнопки быстрых действий) - Collapsible */}
+            <div className="p-4 rounded-2xl border space-y-3 transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <button
+                type="button"
+                onClick={() => setIsEditorQuickActionsOpen(prev => !prev)}
+                className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+              >
+                <div className="flex-1 min-w-0 pr-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold opacity-85">{tr('Кнопки быстрых действий')}</span>
+                  </div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">
+                    {tr('Выберите, какие действия отображать в меню редактора заметки (кнопка ⋮)')}
+                  </div>
+                </div>
+                <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-200 ${isEditorQuickActionsOpen ? 'rotate-180' : ''}`}
+                    style={{ color: isEditorQuickActionsOpen ? theme.accent : undefined }}
+                  />
+                </div>
+              </button>
+
+              {isEditorQuickActionsOpen && (
+                <div className="space-y-1 pt-2 border-t animate-fadeIn" style={{ borderColor: cardBorder }}>
+                  {editorQuickActionOptions.map((btn, idx) => {
+                    const currentActions = quickSettings.editorQuickActions || ALL_EDITOR_QUICK_ACTIONS;
+                    const isEnabled = currentActions.includes(btn.id);
+                    const IconComp = btn.icon;
+
+                    const handleToggle = () => {
+                      const next = isEnabled
+                        ? currentActions.filter(id => id !== btn.id)
+                        : [...currentActions, btn.id];
+                      setQuickSettings(prev => ({ ...prev, editorQuickActions: next }));
+                    };
+
+                    return (
+                      <div
+                        key={btn.id}
+                        className={`flex items-center justify-between text-xs font-semibold py-2.5 cursor-pointer gap-4 ${
+                          idx > 0 ? 'border-t' : ''
+                        }`}
+                        style={{ borderColor: cardBorder }}
+                        onClick={handleToggle}
+                      >
+                        <div className="flex items-center gap-2.5 flex-1 pr-4 min-w-0">
+                          <div
+                            className="w-7 h-7 rounded-xl flex items-center justify-center border shrink-0 opacity-80"
+                            style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.04) }}
+                          >
+                            <IconComp size={14} style={{ color: theme.accent }} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate">{btn.label}</div>
+                            <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">{btn.desc}</div>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                            isEnabled ? 'justify-end' : 'justify-start'
+                          }`}
+                          style={{
+                            backgroundColor: isEnabled ? theme.accent : hexToRgba(theme.text, 0.2),
+                          }}
+                        >
+                          <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Custom Highlight Colors (Цвета выделения текста) */}
+            <div className="p-4 rounded-2xl border space-y-3 transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold opacity-85">{tr('Цвета выделения текста', 'Text Highlight Colors')}</div>
+                  <div className="text-[10px] opacity-50 font-normal mt-0.5">
+                    {tr('Нажмите на цвет для выбора в палитре', 'Tap a color to customize in palette')}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleResetAllHighlightColors}
+                  className="px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 opacity-75 hover:opacity-100"
+                  style={{
+                    borderColor: cardBorder,
+                    backgroundColor: hexToRgba(theme.text, 0.04),
+                    color: theme.text,
+                  }}
+                  title={tr('Сбросить все цвета на базовые пастельные', 'Reset all colors to default pastel')}
+                >
+                  <RotateCcw size={12} />
+                  <span>{tr('Сбросить', 'Reset')}</span>
+                </button>
+              </div>
+
+              {/* 8 Color Swatches */}
+              <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-1">
+                {activeHighlightColors.map((color, idx) => {
+                  const defaultInfo = DEFAULT_PASTEL_HIGHLIGHT_COLORS[idx];
+                  const isLight = isColorLight(color);
+
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setEditingHighlightIndex(idx)}
+                      className="flex-1 aspect-square max-w-[42px] rounded-full border transition-all duration-150 cursor-pointer shadow-xs hover:scale-110 active:scale-95 flex items-center justify-center shrink-0 group"
+                      style={{
+                        backgroundColor: color,
+                        borderColor: hexToRgba(theme.text, 0.15),
+                      }}
+                      title={`${defaultInfo?.label || `Цвет ${idx + 1}`}: ${color}`}
+                    >
+                      <span
+                        className="text-[11px] font-bold select-none opacity-40 group-hover:opacity-100 transition-opacity"
+                        style={{ color: isLight ? '#000000' : '#FFFFFF' }}
+                      >
+                        {idx + 1}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Color Palette Modal for Highlight Color selection */}
+            {editingHighlightIndex !== null && (
+              <ColorPaletteModal
+                isOpen={editingHighlightIndex !== null}
+                initialColor={activeHighlightColors[editingHighlightIndex]}
+                onClose={() => setEditingHighlightIndex(null)}
+                onApply={(newColor) => {
+                  handleSelectHighlightColor(editingHighlightIndex, newColor);
+                  setEditingHighlightIndex(null);
+                }}
+                theme={theme}
+                title={`${tr('Цвет маркера', 'Marker Color')} #${editingHighlightIndex + 1}`}
+              />
+            )}
           </div>
         )}
 
@@ -2494,6 +2661,123 @@ export const SettingsPage: React.FC = () => {
                     options={trashRetentionOptions}
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Storage on Device (Память на устройстве) */}
+            <div className="p-4 rounded-2xl border space-y-3.5 transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <HardDrive size={18} style={{ color: theme.accent }} className="shrink-0 opacity-90" />
+                  <div>
+                    <div className="text-sm font-bold flex items-center gap-2">
+                      <span>{tr('Память на устройстве', 'Storage on device')}</span>
+                      {storageBreakdown && (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-mono font-bold border"
+                          style={{
+                            backgroundColor: hexToRgba(theme.accent, 0.12),
+                            borderColor: hexToRgba(theme.accent, 0.3),
+                            color: theme.accent,
+                          }}
+                        >
+                          {storageBreakdown.totalFormatted}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] opacity-60 font-normal mt-0.5">
+                      {storageBreakdown?.quotaFormatted
+                        ? `${tr('Веб-сайт занимает', 'App uses')} ${storageBreakdown.totalFormatted} ${tr('из доступных', 'of available')} ~${storageBreakdown.quotaFormatted}`
+                        : tr('Объём данных, сохранённых веб-приложением на устройстве', 'Data stored by web application on this device')}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadStorageData}
+                  disabled={isLoadingStorage}
+                  className="p-2 rounded-xl border hover:bg-white/10 active:scale-95 transition cursor-pointer opacity-80 hover:opacity-100 shrink-0"
+                  style={{ borderColor: cardBorder, color: theme.text }}
+                  title={tr('Пересчитать размер памяти', 'Recalculate storage usage')}
+                >
+                  <RefreshCw size={15} className={isLoadingStorage ? 'animate-spin' : ''} />
+                </button>
+              </div>
+
+              {/* Multi-segment storage bar */}
+              {storageBreakdown && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="w-full h-2.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden flex">
+                    {storageBreakdown.categories
+                      .filter(cat => cat.bytes > 0)
+                      .map(cat => {
+                        const widthPct = Math.max(1.5, cat.percentage);
+                        return (
+                          <div
+                            key={cat.id}
+                            className="h-full transition-all duration-300 first:rounded-l-full last:rounded-r-full"
+                            style={{
+                              width: `${widthPct}%`,
+                              backgroundColor: cat.color,
+                            }}
+                            title={`${cat.label}: ${cat.formattedSize} (${cat.percentage}%)`}
+                          />
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* Subcategories list */}
+              <div className="space-y-2 pt-1">
+                {storageBreakdown ? (
+                  storageBreakdown.categories.map(cat => {
+                    const getCategoryIcon = () => {
+                      switch (cat.id) {
+                        case 'notes': return <FileText size={16} style={{ color: cat.color }} />;
+                        case 'tasks': return <CheckSquare size={16} style={{ color: cat.color }} />;
+                        case 'webHistory': return <Globe size={16} style={{ color: cat.color }} />;
+                        case 'aiDialogs': return <Sparkles size={16} style={{ color: cat.color }} />;
+                        case 'semanticModel': return <Brain size={16} style={{ color: cat.color }} />;
+                        case 'settings': return <SlidersHorizontal size={16} style={{ color: cat.color }} />;
+                        default: return <Database size={16} style={{ color: cat.color }} />;
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={cat.id}
+                        className="flex items-center justify-between py-2 px-3 rounded-xl border transition-colors"
+                        style={{
+                          borderColor: cardBorder,
+                          backgroundColor: hexToRgba(theme.text, 0.02),
+                        }}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                          <div className="shrink-0 flex items-center justify-center">
+                            {getCategoryIcon()}
+                          </div>
+                          <span className="text-xs font-semibold truncate">{tr(cat.label)}</span>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-xs font-mono font-bold" style={{ color: theme.text }}>
+                            {cat.formattedSize}
+                          </div>
+                          <div className="text-[10px] opacity-45 font-mono">
+                            {cat.percentage}%
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-4 text-center text-xs opacity-50 flex items-center justify-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>{tr('Вычисление объёма памяти...', 'Calculating storage usage...')}</span>
+                  </div>
+                )}
               </div>
             </div>
 

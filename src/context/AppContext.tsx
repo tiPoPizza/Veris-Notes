@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Note, NoteAttachment, TaskList, ThemePreset, QuickSettings, ViewMode, LanguageCode, LaunchScreen, Tag, Priority, TaskItem, NoteBlock, TaskSortOrder, SearchTarget, CalendarEvent, WebSearchSettings, WebSearchHistoryItem, KanbanColumn, KanbanCard, KanbanChecklistItem, PinUnlockResult, AnacrusaSettings, AnacrusaChatSession, CohereModelMeta, CohereModelId, AIModelMeta, SemanticSearchSettings, SemanticSearchTriggerMode, ALL_FORMATTING_TOOLBAR_BUTTONS, ALL_NOTE_TILE_ACTIONS, Workspace, TrashRetentionDays, ThemeScheduleSettings } from '../types';
+import { Note, NoteAttachment, TaskList, ThemePreset, QuickSettings, ViewMode, LanguageCode, LaunchScreen, Tag, Priority, TaskItem, NoteBlock, TaskSortOrder, SearchTarget, CalendarEvent, WebSearchSettings, WebSearchHistoryItem, KanbanColumn, KanbanCard, KanbanChecklistItem, PinUnlockResult, AnacrusaSettings, AnacrusaChatSession, CohereModelMeta, CohereModelId, AIModelMeta, SemanticSearchSettings, SemanticSearchTriggerMode, ALL_FORMATTING_TOOLBAR_BUTTONS, ALL_NOTE_TILE_ACTIONS, ALL_EDITOR_QUICK_ACTIONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS, Workspace, TrashRetentionDays, ThemeScheduleSettings } from '../types';
 import { DEFAULT_THEME, ALL_THEMES, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../themes';
 import { parseFileToNotes, ImportedNoteData } from '../utils/fileImporter';
 import { idbGet, idbSet, idbDelete, safeLocalStorageSet } from '../utils/dbStorage';
@@ -261,9 +261,11 @@ const INITIAL_QUICK_SETTINGS: QuickSettings = {
   oneTimeFormatting: true,
   formattingToolbarButtons: ALL_FORMATTING_TOOLBAR_BUTTONS,
   noteTileActions: ALL_NOTE_TILE_ACTIONS,
+  editorQuickActions: ALL_EDITOR_QUICK_ACTIONS,
+  customHighlightColors: DEFAULT_PASTEL_HIGHLIGHT_COLORS.map(c => c.color),
   horizontalMainMenu: false,
   pinSearchToHomeScreen: false,
-  uppercaseBlockNames: false,
+  showSidebarTabs: true,
   sidebarTabs: ['notes', 'tasks'],
   actionMenuDisplayMode: 'tiles',
   actionMenuItems: ['calendar', 'kanban', 'trash', 'settings', 'ai', 'webSearch'],

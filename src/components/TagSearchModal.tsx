@@ -633,8 +633,8 @@ export const TagSearchModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-end p-3 sm:p-6 backdrop-blur-xs overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
+      className="fixed inset-0 z-50 flex items-center justify-end p-3 sm:p-6 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
       onClick={e => {
         if (e.target === e.currentTarget) {
           setIsTagSearchOpen(false);

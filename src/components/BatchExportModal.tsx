@@ -13,9 +13,9 @@ interface BatchExportModalProps {
 }
 
 const FORMATS = [
+  { id: 'docx', label: 'DOCX' },
   { id: 'txt', label: 'TXT' },
   { id: 'md', label: 'MD' },
-  { id: 'docx', label: 'DOCX' },
   { id: 'html', label: 'HTML' },
   { id: 'rtf', label: 'RTF' },
   { id: 'json', label: 'JSON' },
@@ -38,10 +38,12 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({
     return blocks.length > 0 ? blocks[0].id : '';
   });
 
-  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  // Array of note IDs preserving the user's click order:
+  // First selected is first in array (top in merged doc), last selected is last
+  const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [packagingMode, setPackagingMode] = useState<'separate' | 'single'>('separate');
-  const [formatId, setFormatId] = useState<string>('txt');
+  const [packagingMode, setPackagingMode] = useState<'single' | 'separate'>('single');
+  const [formatId, setFormatId] = useState<string>('docx');
 
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
@@ -72,8 +74,7 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({
       } else if (blocks.length > 0) {
         setSelectedBlockId(blocks[0].id);
       }
-      // Preselect all active notes for immediate 0-click readiness
-      setSelectedNoteIds(new Set(activeNotes.map(n => n.id)));
+      setSelectedNoteIds([]);
       setSearchQuery('');
       setExportSuccess(false);
       setErrorMessage(null);
@@ -98,38 +99,39 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({
     return getNotesForBlock(block, activeNotes);
   }, [selectedBlockId, blocks, activeNotes]);
 
+  // Notes ordered strictly by user's selection order:
+  // First chosen is top (index 0), last chosen is bottom
   const notesToExport = useMemo(() => {
     if (exportScope === 'block') {
       return blockNotes;
     }
-    return activeNotes.filter(n => selectedNoteIds.has(n.id));
+    const noteMap = new Map(activeNotes.map(n => [n.id, n]));
+    return selectedNoteIds
+      .map(id => noteMap.get(id))
+      .filter((n): n is Note => Boolean(n));
   }, [exportScope, blockNotes, activeNotes, selectedNoteIds]);
 
   const toggleNoteSelection = (noteId: string) => {
     setSelectedNoteIds(prev => {
-      const next = new Set(prev);
-      if (next.has(noteId)) {
-        next.delete(noteId);
-      } else {
-        next.add(noteId);
+      if (prev.includes(noteId)) {
+        return prev.filter(id => id !== noteId);
       }
-      return next;
+      return [...prev, noteId];
     });
   };
 
   const allFilteredSelected =
-    filteredNotes.length > 0 && filteredNotes.every(n => selectedNoteIds.has(n.id));
+    filteredNotes.length > 0 && filteredNotes.every(n => selectedNoteIds.includes(n.id));
 
   const toggleSelectAll = () => {
-    setSelectedNoteIds(prev => {
-      const next = new Set(prev);
-      if (allFilteredSelected) {
-        filteredNotes.forEach(n => next.delete(n.id));
-      } else {
-        filteredNotes.forEach(n => next.add(n.id));
-      }
-      return next;
-    });
+    if (allFilteredSelected) {
+      setSelectedNoteIds(prev => prev.filter(id => !filteredNotes.some(fn => fn.id === id)));
+    } else {
+      setSelectedNoteIds(prev => [
+        ...prev,
+        ...filteredNotes.filter(fn => !prev.includes(fn.id)).map(fn => fn.id),
+      ]);
+    }
   };
 
   const handleExport = async () => {
@@ -140,13 +142,35 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
     try {
       let collectionTitle = 'Заметки';
+      let customFilename = '';
+
       if (exportScope === 'block') {
         const block = blocks.find(b => b.id === selectedBlockId);
-        if (block) collectionTitle = block.name;
+        if (block) {
+          collectionTitle = block.name;
+          customFilename = block.name;
+        }
+      } else if (notesToExport.length === 1) {
+        collectionTitle = notesToExport[0].title?.trim() || 'Заметка';
+        customFilename = notesToExport[0].title?.trim() || 'Заметка';
+      } else if (notesToExport.length > 1) {
+        const first = notesToExport[0].title?.trim();
+        const last = notesToExport[notesToExport.length - 1].title?.trim();
+        if (first && last && first !== last) {
+          collectionTitle = `${first} - ${last}`;
+          customFilename = `${first} - ${last}`;
+        } else if (first) {
+          collectionTitle = `${first} (+${notesToExport.length - 1})`;
+          customFilename = `${first}_и_еще_${notesToExport.length - 1}`;
+        } else {
+          collectionTitle = `Заметки_${notesToExport.length}`;
+          customFilename = `Заметки_${notesToExport.length}`;
+        }
       }
 
       await exportNotesBatch(notesToExport, packagingMode, formatId, {
         collectionTitle,
+        customFilename,
       });
 
       setExportSuccess(true);
@@ -275,12 +299,20 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({
               </button>
             </div>
 
+            {selectedNoteIds.length > 0 && (
+              <div className="text-[10px] opacity-65 flex items-center justify-between px-1">
+                <span>Выбрано: {selectedNoteIds.length}</span>
+                <span>Порядок: 1 (вверху) → {selectedNoteIds.length} (внизу)</span>
+              </div>
+            )}
+
             <div className="max-h-36 overflow-y-auto space-y-0.5 pr-0.5">
               {filteredNotes.length === 0 ? (
                 <div className="text-xs opacity-50 py-3 text-center">Заметки не найдены</div>
               ) : (
                 filteredNotes.map(note => {
-                  const isChecked = selectedNoteIds.has(note.id);
+                  const orderIndex = selectedNoteIds.indexOf(note.id);
+                  const isChecked = orderIndex !== -1;
                   return (
                     <div
                       key={note.id}
@@ -292,18 +324,26 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({
                       }}
                     >
                       <div
-                        className="w-3.5 h-3.5 rounded flex items-center justify-center border transition shrink-0"
+                        className="w-4 h-4 rounded-full flex items-center justify-center border text-[10px] font-bold transition shrink-0"
                         style={{
                           borderColor: isChecked ? theme.accent : hexToRgba(theme.text, 0.3),
                           backgroundColor: isChecked ? theme.accent : 'transparent',
                           color: accentContrast,
                         }}
                       >
-                        {isChecked && <Check size={10} strokeWidth={3} />}
+                        {isChecked ? orderIndex + 1 : null}
                       </div>
                       <span className="truncate flex-1 font-medium">
                         {note.title?.trim() || 'Без названия'}
                       </span>
+                      {isChecked && (
+                        <span
+                          className="text-[10px] font-bold px-1.5 py-0.2 rounded-md shrink-0 opacity-70"
+                          style={{ backgroundColor: hexToRgba(theme.accent, 0.15), color: theme.accent }}
+                        >
+                          #{orderIndex + 1}
+                        </span>
+                      )}
                     </div>
                   );
                 })
@@ -312,32 +352,39 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({
           </div>
         )}
 
-        {/* 3. Как экспортировать: Архив ZIP / Один файл */}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            id="packaging-separate-btn"
-            onClick={() => setPackagingMode('separate')}
-            style={{
-              backgroundColor: packagingMode === 'separate' ? theme.accent : hexToRgba(theme.text, 0.04),
-              color: packagingMode === 'separate' ? accentContrast : hexToRgba(theme.text, 0.75),
-            }}
-            className="flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold transition cursor-pointer text-center"
-          >
-            Архив (ZIP)
-          </button>
-          <button
-            type="button"
-            id="packaging-single-btn"
-            onClick={() => setPackagingMode('single')}
-            style={{
-              backgroundColor: packagingMode === 'single' ? theme.accent : hexToRgba(theme.text, 0.04),
-              color: packagingMode === 'single' ? accentContrast : hexToRgba(theme.text, 0.75),
-            }}
-            className="flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold transition cursor-pointer text-center"
-          >
-            Один файл
-          </button>
+        {/* 3. Как экспортировать: Один файл / Архив ZIP */}
+        <div className="space-y-1.5">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              id="packaging-single-btn"
+              onClick={() => setPackagingMode('single')}
+              style={{
+                backgroundColor: packagingMode === 'single' ? theme.accent : hexToRgba(theme.text, 0.04),
+                color: packagingMode === 'single' ? accentContrast : hexToRgba(theme.text, 0.75),
+              }}
+              className="flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold transition cursor-pointer text-center"
+            >
+              Один файл ({formatId.toUpperCase()})
+            </button>
+            <button
+              type="button"
+              id="packaging-separate-btn"
+              onClick={() => setPackagingMode('separate')}
+              style={{
+                backgroundColor: packagingMode === 'separate' ? theme.accent : hexToRgba(theme.text, 0.04),
+                color: packagingMode === 'separate' ? accentContrast : hexToRgba(theme.text, 0.75),
+              }}
+              className="flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold transition cursor-pointer text-center"
+            >
+              Архив (ZIP)
+            </button>
+          </div>
+          <div className="text-[10px] opacity-50 text-center px-1">
+            {packagingMode === 'single'
+              ? `Все заметки будут объединены в 1 файл .${formatId} (первая выбранная — в самом верху)`
+              : `Каждая заметка сохранится отдельным файлом внутри архива .zip`}
+          </div>
         </div>
 
         {/* 4. Формат */}
@@ -389,7 +436,11 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <span>Экспорт...</span>
             </>
           ) : (
-            <span>Скачать ({notesToExport.length})</span>
+            <span>
+              {packagingMode === 'single'
+                ? `Скачать один файл .${formatId} (${notesToExport.length})`
+                : `Скачать архив .zip (${notesToExport.length})`}
+            </span>
           )}
         </button>
       </div>

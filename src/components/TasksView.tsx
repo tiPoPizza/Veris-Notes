@@ -548,11 +548,7 @@ export const TasksView: React.FC = () => {
       )}
 
       {/* Task Content: Empty State / Horizontal Layout / Vertical Grid Layout */}
-      <div
-        className={`flex-1 flex flex-col min-h-0 transition-opacity duration-200 ${
-          isTagSearchOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
-        }`}
-      >
+      <div className="flex-1 flex flex-col min-h-0">
         {filteredTaskLists.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center py-20 opacity-70 space-y-3">
           <Trophy size={48} className="stroke-[1.6]" style={{ color: theme.text }} />

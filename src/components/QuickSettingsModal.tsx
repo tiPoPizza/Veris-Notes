@@ -25,19 +25,16 @@ export const QuickSettingsModal: React.FC = () => {
     theme,
     openExportModal,
     activeNoteId,
-    notes,
-    updateNote,
   } = useApp();
 
   if (!isQuickSettingsOpen) return null;
 
-  const activeNote = notes.find(n => n.id === activeNoteId);
-
   const t = (key: string) => getTranslation(language, key);
   const isLight = isLightColor(theme.bg);
 
-  const cardBg = hexToRgba(theme.text, 0.05);
-  const cardBorder = hexToRgba(theme.text, 0.12);
+  const cardBg = hexToRgba(theme.text, 0.04);
+  const cardBorder = hexToRgba(theme.text, 0.1);
+  const dividerColor = hexToRgba(theme.text, 0.07);
 
   const handleToggle = (key: keyof typeof quickSettings) => {
     setQuickSettings(prev => ({
@@ -60,198 +57,211 @@ export const QuickSettingsModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.45)' }}
       onClick={() => setIsQuickSettingsOpen(false)}
     >
       <div
-        className="w-full max-w-sm rounded-3xl p-5 sm:p-6 shadow-2xl transition-all border backdrop-blur-2xl animate-fadeIn max-h-[90vh] sm:max-h-[85vh] flex flex-col"
+        className="w-full max-w-sm rounded-3xl p-5 transition-all border animate-fadeIn max-h-[90vh] sm:max-h-[85vh] flex flex-col"
         style={{
-          backgroundColor: hexToRgba(theme.bg, 0.94),
+          backgroundColor: theme.bg,
           color: theme.text,
           borderColor: cardBorder,
-          boxShadow: `0 20px 40px ${hexToRgba(theme.text, 0.15)}`,
+          boxShadow: isLight
+            ? '0 16px 40px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)'
+            : '0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.35)',
         }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-1 mb-2 shrink-0">
-          <h3 className="text-sm font-bold tracking-wide uppercase opacity-90">{t('quickSettings')}</h3>
+        <div className="flex items-center justify-between pb-1 mb-2.5 shrink-0">
+          <h3 className="text-xs font-bold tracking-wider uppercase opacity-80">{t('quickSettings')}</h3>
           <button
             onClick={() => setIsQuickSettingsOpen(false)}
-            className="p-1.5 rounded-xl hover:bg-white/10 active:scale-95 transition cursor-pointer"
+            className="p-1 rounded-xl hover:bg-white/10 active:scale-95 transition cursor-pointer"
             style={{ color: theme.text }}
           >
-            <X size={18} />
+            <X size={17} />
           </button>
         </div>
 
-        {/* Quick Settings Controls - Scrollable */}
-        <div className="flex-1 overflow-y-auto space-y-2 py-1 pr-0.5 min-h-0">
-          {/* Toggle: Obvodka paneley */}
+        {/* Recomposed content */}
+        <div className="flex-1 overflow-y-auto space-y-2.5 py-0.5 pr-0.5 min-h-0">
+          {/* Group 1: Параметры отображения (Unified Grouped Card) */}
           <div
-            className="flex items-center justify-between py-2 px-3 rounded-xl border transition-all cursor-pointer hover:bg-white/5 active:scale-[0.99]"
+            className="rounded-2xl border"
             style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-            onClick={() => handleToggle('showBorder')}
           >
-            <span className="text-xs font-medium">Обводка панелей</span>
+            {/* Обводка панелей */}
             <div
-              className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
-                quickSettings.showBorder ? 'justify-end' : 'justify-start'
-              }`}
-              style={{
-                backgroundColor: quickSettings.showBorder ? theme.accent : hexToRgba(theme.text, 0.2),
-              }}
+              className="flex items-center justify-between py-2.5 px-3.5 rounded-t-2xl cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
+              onClick={() => handleToggle('showBorder')}
             >
-              <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
-            </div>
-          </div>
-
-          {/* Toggle: Schetchik simvolov */}
-          <div
-            className="flex items-center justify-between py-2 px-3 rounded-xl border transition-all cursor-pointer hover:bg-white/5 active:scale-[0.99]"
-            style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-            onClick={() => handleToggle('showCharCount')}
-          >
-            <span className="text-xs font-medium">{t('charCounter')}</span>
-            <div
-              className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
-                quickSettings.showCharCount ? 'justify-end' : 'justify-start'
-              }`}
-              style={{
-                backgroundColor: quickSettings.showCharCount ? theme.accent : hexToRgba(theme.text, 0.2),
-              }}
-            >
-              <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
-            </div>
-          </div>
-
-          {/* Toggle: Schetchik slov */}
-          <div
-            className="flex items-center justify-between py-2 px-3 rounded-xl border transition-all cursor-pointer hover:bg-white/5 active:scale-[0.99]"
-            style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-            onClick={() => handleToggle('showWordCount')}
-          >
-            <span className="text-xs font-medium">{t('wordCounter')}</span>
-            <div
-              className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
-                quickSettings.showWordCount ? 'justify-end' : 'justify-start'
-              }`}
-              style={{
-                backgroundColor: quickSettings.showWordCount ? theme.accent : hexToRgba(theme.text, 0.2),
-              }}
-            >
-              <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
-            </div>
-          </div>
-
-          {/* Toggle: Data izmeneniya */}
-          <div
-            className="flex items-center justify-between py-2 px-3 rounded-xl border transition-all cursor-pointer hover:bg-white/5 active:scale-[0.99]"
-            style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-            onClick={() => handleToggle('showDate')}
-          >
-            <span className="text-xs font-medium">Дата изменения</span>
-            <div
-              className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
-                quickSettings.showDate ? 'justify-end' : 'justify-start'
-              }`}
-              style={{
-                backgroundColor: quickSettings.showDate ? theme.accent : hexToRgba(theme.text, 0.2),
-              }}
-            >
-              <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
-            </div>
-          </div>
-
-          {/* Toggle: Odnorazovoe formatirovanie */}
-          <div
-            className="flex items-center justify-between py-2 px-3 rounded-xl border transition-all cursor-pointer hover:bg-white/5 active:scale-[0.99]"
-            style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-            onClick={() => handleToggle('oneTimeFormatting')}
-          >
-            <span className="text-xs font-medium">Одноразовое форматирование</span>
-            <div
-              className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
-                quickSettings.oneTimeFormatting ? 'justify-end' : 'justify-start'
-              }`}
-              style={{
-                backgroundColor: quickSettings.oneTimeFormatting ? theme.accent : hexToRgba(theme.text, 0.2),
-              }}
-            >
-              <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
-            </div>
-          </div>
-
-          {/* Font Size Adjuster */}
-          <div
-            className="flex items-center justify-between py-2 px-3 rounded-xl border"
-            style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-          >
-            <span className="text-xs font-medium">Размер шрифта</span>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => handleFontSizeChange(-1)}
-                className="w-6 h-6 rounded-lg flex items-center justify-center border hover:bg-white/10 active:scale-95 transition cursor-pointer"
-                style={{ borderColor: cardBorder }}
+              <span className="text-xs font-medium">Обводка панелей</span>
+              <div
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                  quickSettings.showBorder ? 'justify-end' : 'justify-start'
+                }`}
+                style={{
+                  backgroundColor: quickSettings.showBorder ? theme.accent : hexToRgba(theme.text, 0.2),
+                }}
               >
-                <Minus size={12} />
-              </button>
-              <span className="text-xs font-bold w-8 text-center">{quickSettings.fontSize}</span>
-              <button
-                onClick={() => handleFontSizeChange(1)}
-                className="w-6 h-6 rounded-lg flex items-center justify-center border hover:bg-white/10 active:scale-95 transition cursor-pointer"
-                style={{ borderColor: cardBorder }}
+                <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+              </div>
+            </div>
+
+            <div className="h-px mx-3" style={{ backgroundColor: dividerColor }} />
+
+            {/* Счётчик символов */}
+            <div
+              className="flex items-center justify-between py-2.5 px-3.5 cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
+              onClick={() => handleToggle('showCharCount')}
+            >
+              <span className="text-xs font-medium">{t('charCounter')}</span>
+              <div
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                  quickSettings.showCharCount ? 'justify-end' : 'justify-start'
+                }`}
+                style={{
+                  backgroundColor: quickSettings.showCharCount ? theme.accent : hexToRgba(theme.text, 0.2),
+                }}
               >
-                <Plus size={12} />
-              </button>
+                <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+              </div>
+            </div>
+
+            <div className="h-px mx-3" style={{ backgroundColor: dividerColor }} />
+
+            {/* Счётчик слов */}
+            <div
+              className="flex items-center justify-between py-2.5 px-3.5 cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
+              onClick={() => handleToggle('showWordCount')}
+            >
+              <span className="text-xs font-medium">{t('wordCounter')}</span>
+              <div
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                  quickSettings.showWordCount ? 'justify-end' : 'justify-start'
+                }`}
+                style={{
+                  backgroundColor: quickSettings.showWordCount ? theme.accent : hexToRgba(theme.text, 0.2),
+                }}
+              >
+                <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+              </div>
+            </div>
+
+            <div className="h-px mx-3" style={{ backgroundColor: dividerColor }} />
+
+            {/* Дата изменения */}
+            <div
+              className="flex items-center justify-between py-2.5 px-3.5 cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
+              onClick={() => handleToggle('showDate')}
+            >
+              <span className="text-xs font-medium">Дата изменения</span>
+              <div
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                  quickSettings.showDate ? 'justify-end' : 'justify-start'
+                }`}
+                style={{
+                  backgroundColor: quickSettings.showDate ? theme.accent : hexToRgba(theme.text, 0.2),
+                }}
+              >
+                <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+              </div>
+            </div>
+
+            <div className="h-px mx-3" style={{ backgroundColor: dividerColor }} />
+
+            {/* Одноразовое форматирование */}
+            <div
+              className="flex items-center justify-between py-2.5 px-3.5 rounded-b-2xl cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
+              onClick={() => handleToggle('oneTimeFormatting')}
+            >
+              <span className="text-xs font-medium">Одноразовое форматирование</span>
+              <div
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                  quickSettings.oneTimeFormatting ? 'justify-end' : 'justify-start'
+                }`}
+                style={{
+                  backgroundColor: quickSettings.oneTimeFormatting ? theme.accent : hexToRgba(theme.text, 0.2),
+                }}
+              >
+                <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+              </div>
             </div>
           </div>
 
-          {/* Line Height Control */}
+          {/* Group 2: Типографика (Unified Grouped Card) */}
           <div
-            className="flex items-center justify-between py-1.5 px-3 rounded-xl border min-h-[40px]"
+            className="rounded-2xl border"
             style={{ backgroundColor: cardBg, borderColor: cardBorder }}
           >
-            <span className="text-xs font-medium">Межстрочный интервал</span>
-            <CustomSelect
-              value={quickSettings.lineHeight || 1.6}
-              onChange={val => setQuickSettings(prev => ({ ...prev, lineHeight: val }))}
-              options={LINE_HEIGHT_OPTIONS}
-              direction="up"
-              align="right"
-            />
-          </div>
+            {/* Top row: Размер шрифта + Межстрочный интервал */}
+            <div className="flex items-center rounded-t-2xl">
+              {/* Размер шрифта */}
+              <div className="flex-1 flex items-center justify-between py-2 px-3">
+                <span className="text-xs font-medium opacity-85">Размер</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleFontSizeChange(-1)}
+                    className="w-5.5 h-5.5 rounded-md flex items-center justify-center border hover:bg-white/10 active:scale-95 transition cursor-pointer"
+                    style={{ borderColor: cardBorder }}
+                  >
+                    <Minus size={11} />
+                  </button>
+                  <span className="text-xs font-bold w-6 text-center">{quickSettings.fontSize}</span>
+                  <button
+                    onClick={() => handleFontSizeChange(1)}
+                    className="w-5.5 h-5.5 rounded-md flex items-center justify-center border hover:bg-white/10 active:scale-95 transition cursor-pointer"
+                    style={{ borderColor: cardBorder }}
+                  >
+                    <Plus size={11} />
+                  </button>
+                </div>
+              </div>
 
-          {/* Font Family Selection */}
-          <div
-            className="flex items-center justify-between py-1.5 px-3 rounded-xl border min-h-[40px]"
-            style={{ backgroundColor: cardBg, borderColor: cardBorder }}
-          >
-            <span className="text-xs font-medium">Шрифт системы</span>
-            <CustomSelect
-              value={quickSettings.fontFamily || 'sans'}
-              onChange={val => setQuickSettings(prev => ({ ...prev, fontFamily: val }))}
-              options={FONT_FAMILY_OPTIONS}
-              direction="up"
-              align="right"
-            />
+              {/* Межстрочный интервал */}
+              <div className="flex-1 flex items-center justify-between py-2 px-3">
+                <span className="text-xs font-medium opacity-85">Интервал</span>
+                <CustomSelect
+                  value={quickSettings.lineHeight || 1.6}
+                  onChange={val => setQuickSettings(prev => ({ ...prev, lineHeight: val }))}
+                  options={LINE_HEIGHT_OPTIONS}
+                  direction="auto"
+                  align="right"
+                />
+              </div>
+            </div>
+
+            <div className="h-px mx-3" style={{ backgroundColor: dividerColor }} />
+
+            {/* Bottom row: Шрифт системы */}
+            <div className="flex items-center justify-between py-2 px-3.5 rounded-b-2xl">
+              <span className="text-xs font-medium opacity-85">Шрифт</span>
+              <CustomSelect
+                value={quickSettings.fontFamily || 'sans'}
+                onChange={val => setQuickSettings(prev => ({ ...prev, fontFamily: val }))}
+                options={FONT_FAMILY_OPTIONS}
+                direction="auto"
+                align="right"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Footer: Export and All Settings buttons */}
-        <div className="space-y-2 pt-2 shrink-0 mt-2">
+        {/* Group 3: Нижние действия (Side-by-side) */}
+        <div className="flex items-center gap-2 pt-2.5 shrink-0 mt-1">
           <button
             onClick={handleExportClick}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border font-bold text-xs hover:bg-white/10 active:scale-98 transition cursor-pointer"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs hover:bg-white/10 active:scale-98 transition cursor-pointer"
             style={{
               backgroundColor: cardBg,
               borderColor: cardBorder,
               color: theme.text,
             }}
           >
-            <Download size={14} />
-            <span>Экспортировать заметку</span>
+            <Download size={13} />
+            <span className="truncate">Экспорт</span>
           </button>
 
           <button
@@ -259,15 +269,15 @@ export const QuickSettingsModal: React.FC = () => {
               setIsQuickSettingsOpen(false);
               setViewMode('settings');
             }}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border font-bold text-xs hover:bg-white/10 active:scale-98 transition cursor-pointer"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs hover:bg-white/10 active:scale-98 transition cursor-pointer"
             style={{
               backgroundColor: cardBg,
               borderColor: cardBorder,
               color: theme.text,
             }}
           >
-            <Settings size={14} />
-            {t('allSettings')}
+            <Settings size={13} />
+            <span className="truncate">{t('allSettings')}</span>
           </button>
         </div>
       </div>

@@ -1588,40 +1588,15 @@ export function generateCombinedHtmlDocument(notes: Note[], collectionTitle: str
  */
 export async function generateCombinedDocxDocument(
   notes: Note[],
-  collectionTitle: string = 'Заметки'
+  _collectionTitle: string = 'Заметки'
 ): Promise<Blob> {
   const zip = new JSZip();
 
-  let bodyXml = `
-    <!-- Collection Cover / Heading -->
-    <w:p>
-      <w:pPr>
-        <w:pStyle w:val="Heading1"/>
-        <w:spacing w:before="240" w:after="120"/>
-      </w:pPr>
-      <w:r>
-        <w:rPr>
-          <w:b/>
-          <w:sz w:val="44"/>
-          <w:szCs w:val="44"/>
-          <w:color w:val="EAB308"/>
-        </w:rPr>
-        <w:t>${escapeXml(collectionTitle)}</w:t>
-      </w:r>
-    </w:p>
-    <w:p>
-      <w:pPr><w:spacing w:after="360"/></w:pPr>
-      <w:r>
-        <w:rPr><w:i/><w:sz w:val="20"/><w:color w:val="71717A"/></w:rPr>
-        <w:t>Всего заметок: ${notes.length} • Экспортировано: ${new Date().toLocaleString('ru-RU')}</w:t>
-      </w:r>
-    </w:p>
-    <w:p><w:r><w:br w:type="page"/></w:r></w:p>
-  `;
+  let bodyXml = '';
 
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i];
-    const title = escapeXml(note.title || 'Без названия');
+    const title = escapeXml(note.title?.trim() || `Заметка ${i + 1}`);
     const dateStr = new Date(note.updatedAt).toLocaleString('ru-RU');
     const plainText = htmlToPlainText(note.content || '');
     const paragraphs = plainText.split('\n').filter(Boolean);
@@ -1639,7 +1614,7 @@ export async function generateCombinedDocxDocument(
             <w:szCs w:val="34"/>
             <w:color w:val="EAB308"/>
           </w:rPr>
-          <w:t>${i + 1}. ${title}</w:t>
+          <w:t>${title}</w:t>
         </w:r>
       </w:p>
       <w:p>
@@ -1832,20 +1807,19 @@ export async function exportCombinedNotes(
 
   switch (formatId) {
     case 'txt': {
-      const header = `════════════════════════════════════════════════════════════\n${collectionTitle.toUpperCase()}\nВсего заметок: ${notes.length} | Экспортировано: ${new Date().toLocaleString('ru-RU')}\n════════════════════════════════════════════════════════════\n\n`;
       const combined = notes
         .map((note, idx) => {
-          const sep = '─'.repeat(60);
+          const sep = '─'.repeat(50);
           const title = note.title?.trim() || `Заметка ${idx + 1}`;
           const date = new Date(note.updatedAt).toLocaleString('ru-RU');
           const tags = note.tags && note.tags.length > 0 ? `Теги: ${note.tags.join(', ')}\n` : '';
           const body = htmlToPlainText(note.content || '');
-          return `${sep}\n[${idx + 1}] ${title}\nДата изменения: ${date}\n${tags}${sep}\n\n${body}`;
+          return `${title}\nДата: ${date}\n${tags}${sep}\n\n${body}`;
         })
-        .join('\n\n\n');
+        .join('\n\n\n' + '═'.repeat(50) + '\n\n\n');
 
       downloadBlob(
-        new Blob(['\uFEFF' + header + combined], { type: 'text/plain;charset=utf-8' }),
+        new Blob(['\uFEFF' + combined], { type: 'text/plain;charset=utf-8' }),
         `${safeBase}.txt`
       );
       break;
@@ -1930,11 +1904,15 @@ export async function exportNotesBatch(
   formatId: string,
   options?: {
     collectionTitle?: string;
+    customFilename?: string;
     baseName?: string;
   }
 ): Promise<void> {
   const collectionTitle = options?.collectionTitle || 'Заметки';
-  const baseName = options?.baseName || `${collectionTitle.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`;
+  const baseName =
+    options?.customFilename ||
+    options?.baseName ||
+    `${collectionTitle.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`;
 
   if (mode === 'separate') {
     await exportNotesAsZip(notes, formatId, baseName);

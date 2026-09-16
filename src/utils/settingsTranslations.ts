@@ -315,6 +315,16 @@ export const SETTINGS_TRANSLATIONS: Record<string, string> = {
   'Переиндексация...': 'Reindexing...',
   'Очистить индекс': 'Clear Index',
 
+  // Highlight colors & Storage
+  'Цвета выделения текста': 'Text Highlight Colors',
+  'Сбросить цвета': 'Reset Colors',
+  'Память на устройстве': 'Storage on Device',
+  'Использование памяти': 'Storage Usage',
+  'Веб-история': 'Web History',
+  'ИИ диалоги': 'AI Dialogs',
+  'Семантическая модель': 'Semantic Model',
+  'Системные данные': 'System Data',
+
   // Other
   'О приложении': 'About Application',
   'Veris Notes — современное приложение для заметок, задач и управления знаниями': 'Veris Notes — modern application for notes, tasks, and knowledge management',

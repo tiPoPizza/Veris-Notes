@@ -14,18 +14,9 @@ import {
 import { useApp } from '../context/AppContext';
 import { hexToRgba, isLightColor } from '../themes';
 import { isColorLight } from '../utils/textUtils';
-import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS } from '../types';
+import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS } from '../types';
 
-export const HIGHLIGHT_COLORS = [
-  { id: 'mustard', color: '#9E862B', label: 'Горчичный' },
-  { id: 'dusty-red', color: '#8C4343', label: 'Пыльно-красный' },
-  { id: 'slate-blue', color: '#3B6584', label: 'Серо-синий' },
-  { id: 'forest-green', color: '#3D7043', label: 'Лесной зелёный' },
-  { id: 'slate-grey', color: '#6B6B6B', label: 'Сланцевый серый' },
-  { id: 'deep-purple', color: '#60316E', label: 'Тёмно-фиолетовый' },
-  { id: 'bronze', color: '#8C6023', label: 'Бронзовый' },
-  { id: 'burgundy', color: '#7A2838', label: 'Бордовый' },
-];
+export const HIGHLIGHT_COLORS = DEFAULT_PASTEL_HIGHLIGHT_COLORS;
 
 interface FormattingToolbarProps {
   selectionRect: DOMRect | null;
@@ -49,6 +40,17 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
     width: 320,
     height: 44,
   });
+
+  const activeHighlightColors = React.useMemo(() => {
+    if (quickSettings.customHighlightColors && quickSettings.customHighlightColors.length === 8) {
+      return quickSettings.customHighlightColors.map((color, idx) => ({
+        id: `custom-color-${idx}`,
+        color,
+        label: DEFAULT_PASTEL_HIGHLIGHT_COLORS[idx]?.label || `Цвет ${idx + 1}`,
+      }));
+    }
+    return DEFAULT_PASTEL_HIGHLIGHT_COLORS;
+  }, [quickSettings.customHighlightColors]);
 
   // Measure actual toolbar size on render/update
   useEffect(() => {
@@ -170,6 +172,20 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
   const exec = (command: string, value: string = '') => {
     document.execCommand(command, false, value);
     onApplyFormat();
+    if (oneTimeFormatting) {
+      try {
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        if (document.queryCommandState(command)) {
+          document.execCommand(command, false, undefined);
+        }
+      } catch {}
+    }
   };
 
   const handleCut = () => {
@@ -534,11 +550,20 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
 
     if (processedSpans.length > 0) {
       try {
-        const newRange = document.createRange();
-        newRange.setStartBefore(processedSpans[0]);
-        newRange.setEndAfter(processedSpans[processedSpans.length - 1]);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
+        if (oneTimeFormatting) {
+          const lastSpan = processedSpans[processedSpans.length - 1];
+          const newRange = document.createRange();
+          newRange.setStartAfter(lastSpan);
+          newRange.setEndAfter(lastSpan);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+        } else {
+          const newRange = document.createRange();
+          newRange.setStartBefore(processedSpans[0]);
+          newRange.setEndAfter(processedSpans[processedSpans.length - 1]);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+        }
       } catch (e) {
         // ignore selection restore error
       }
@@ -948,9 +973,10 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
           }}
         >
           <div className="grid grid-cols-4 gap-1.5 sm:gap-2 w-44 sm:w-48">
-            {HIGHLIGHT_COLORS.map(c => {
+            {activeHighlightColors.map(c => {
               const isColorActive =
                 activeColorHex && hexOrRgbMatch(activeColorHex, c.color);
+              const checkColor = isColorLight(c.color) ? '#000000' : '#FFFFFF';
 
               return (
                 <button
@@ -965,7 +991,7 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
                   title={c.label}
                 >
                   {isColorActive && (
-                    <Check size={15} strokeWidth={3} className="text-white drop-shadow-md font-extrabold" />
+                    <Check size={15} strokeWidth={3} style={{ color: checkColor }} className="drop-shadow-xs font-extrabold" />
                   )}
                 </button>
               );

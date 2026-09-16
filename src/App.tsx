@@ -90,11 +90,7 @@ const VerisAppContent: React.FC = () => {
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <Header />
 
-        <main
-          className={`flex-1 flex flex-col overflow-hidden relative transition-opacity duration-200 ${
-            isTagSearchOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
-          }`}
-        >
+        <main className="flex-1 flex flex-col overflow-hidden relative">
           {viewMode === 'editor' && <NoteEditor />}
           {viewMode === 'notes' && <NotesListView />}
           {viewMode === 'tasks' && <TasksView />}

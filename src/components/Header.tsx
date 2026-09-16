@@ -27,6 +27,7 @@ import {
 import { hexToRgba, isLightColor } from '../themes';
 import { stripHtmlTags } from '../utils/textUtils';
 import { PinModal } from './PinModal';
+import { ALL_EDITOR_QUICK_ACTIONS } from '../types';
 
 export const Header: React.FC = () => {
   const {
@@ -361,107 +362,140 @@ export const Header: React.FC = () => {
                 >
                   {editorMenuTab === 'main' ? (
                     /* Main Action Menu */
-                    <div className="flex flex-col gap-0.5 text-xs font-bold">
-                      {/* Focus Mode item (Only shown if NOT pinned to bottom dock) */}
-                      {!quickSettings.pinFocusModeToBottomBar && (
-                        <button
-                          onClick={() => {
-                            setIsFocusMode(true);
-                            setIsEditorMenuOpen(false);
-                          }}
-                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                        >
-                          <Maximize2 size={15} style={{ color: theme.accent }} />
-                          <span>Фокус мод</span>
-                        </button>
-                      )}
+                    (() => {
+                      const currentActions = quickSettings.editorQuickActions || ALL_EDITOR_QUICK_ACTIONS;
+                      const showFocusMode = currentActions.includes('focusMode') && !quickSettings.pinFocusModeToBottomBar;
+                      const showPin = currentActions.includes('pin');
+                      const showTag = currentActions.includes('tag');
+                      const showBlock = currentActions.includes('block');
+                      const showExport = currentActions.includes('export');
+                      const showPrivate = currentActions.includes('private') && Boolean(privatePin);
+                      const showDelete = currentActions.includes('delete');
+                      const hasItemsAbove = showFocusMode || showPin || showTag || showBlock || showExport || showPrivate;
+                      const hasAnyItems = hasItemsAbove || showDelete;
 
-                      {/* 1. Закрепить */}
-                      <button
-                        onClick={() => {
-                          togglePinNote(activeNote.id);
-                          setIsEditorMenuOpen(false);
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                      >
-                        <Pin
-                          size={15}
-                          style={{ color: theme.accent }}
-                          className={activeNote.pinned ? 'fill-current' : ''}
-                        />
-                        <span>{activeNote.pinned ? 'Открепить' : 'Закрепить'}</span>
-                      </button>
+                      return (
+                        <div className="flex flex-col gap-0.5 text-xs font-bold">
+                          {!hasAnyItems && (
+                            <div className="px-3 py-3 text-[11px] opacity-40 font-normal text-center select-none">
+                              {language === 'ru' ? 'Все действия скрыты' : 'All actions hidden'}
+                            </div>
+                          )}
 
-                      {/* 2. Добавить тег */}
-                      <button
-                        onClick={() => {
-                          setEditorMenuTab('tags');
-                          setTagSearchQuery('');
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                      >
-                        <TagIcon size={15} style={{ color: theme.accent }} />
-                        <span>Добавить тег</span>
-                      </button>
+                          {/* Focus Mode item (Only shown if NOT pinned to bottom dock) */}
+                          {showFocusMode && (
+                            <button
+                              onClick={() => {
+                                setIsFocusMode(true);
+                                setIsEditorMenuOpen(false);
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                            >
+                              <Maximize2 size={15} style={{ color: theme.accent }} />
+                              <span>Фокус мод</span>
+                            </button>
+                          )}
 
-                      {/* 2.5. В блок */}
-                      <button
-                        onClick={() => {
-                          setEditorMenuTab('blocks');
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                      >
-                        <Layers size={15} style={{ color: theme.accent }} />
-                        <span>В блок</span>
-                      </button>
+                          {/* 1. Закрепить */}
+                          {showPin && (
+                            <button
+                              onClick={() => {
+                                togglePinNote(activeNote.id);
+                                setIsEditorMenuOpen(false);
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                            >
+                              <Pin
+                                size={15}
+                                style={{ color: theme.accent }}
+                                className={activeNote.pinned ? 'fill-current' : ''}
+                              />
+                              <span>{activeNote.pinned ? 'Открепить' : 'Закрепить'}</span>
+                            </button>
+                          )}
 
-                      {/* 3. Экспорт */}
-                      <button
-                        onClick={() => {
-                          setIsEditorMenuOpen(false);
-                          openExportModal(activeNote.id);
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                      >
-                        <Download size={15} style={{ color: theme.accent }} />
-                        <span>Экспорт</span>
-                      </button>
+                          {/* 2. Добавить тег */}
+                          {showTag && (
+                            <button
+                              onClick={() => {
+                                setEditorMenuTab('tags');
+                                setTagSearchQuery('');
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                            >
+                              <TagIcon size={15} style={{ color: theme.accent }} />
+                              <span>Добавить тег</span>
+                            </button>
+                          )}
 
-                      {/* 4. В приватное пространство (Only if privatePin is set) */}
-                      {Boolean(privatePin) && (
-                        <button
-                          onClick={() => {
-                            const newPrivate = !activeNote.isPrivate;
-                            updateNote(activeNote.id, { isPrivate: newPrivate });
-                            if (newPrivate) {
-                              setViewMode('private');
-                            }
-                            setIsEditorMenuOpen(false);
-                          }}
-                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                        >
-                          <Shield size={15} style={{ color: theme.accent }} />
-                          <span>{activeNote.isPrivate ? 'Убрать из привата' : 'В приват'}</span>
-                        </button>
-                      )}
+                          {/* 2.5. В блок */}
+                          {showBlock && (
+                            <button
+                              onClick={() => {
+                                setEditorMenuTab('blocks');
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                            >
+                              <Layers size={15} style={{ color: theme.accent }} />
+                              <span>В блок</span>
+                            </button>
+                          )}
 
-                      <div
-                        className="h-px my-1"
-                        style={{ backgroundColor: hexToRgba(theme.text, 0.1) }}
-                      />
+                          {/* 3. Экспорт */}
+                          {showExport && (
+                            <button
+                              onClick={() => {
+                                setIsEditorMenuOpen(false);
+                                openExportModal(activeNote.id);
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                            >
+                              <Download size={15} style={{ color: theme.accent }} />
+                              <span>Экспорт</span>
+                            </button>
+                          )}
 
-                      {/* 6. В корзину */}
-                      <button
-                        onClick={() => {
-                          setIsTrashConfirmOpen(true);
-                          setIsEditorMenuOpen(false);
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-red-500/15 text-red-500 active:scale-98 transition cursor-pointer text-left"
-                      >
-                        <Trash2 size={15} />
-                        <span>В корзину</span>
-                      </button>
-                    </div>
+                          {/* 4. В приватное пространство (Only if privatePin is set) */}
+                          {showPrivate && (
+                            <button
+                              onClick={() => {
+                                const newPrivate = !activeNote.isPrivate;
+                                updateNote(activeNote.id, { isPrivate: newPrivate });
+                                if (newPrivate) {
+                                  setViewMode('private');
+                                }
+                                setIsEditorMenuOpen(false);
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                            >
+                              <Shield size={15} style={{ color: theme.accent }} />
+                              <span>{activeNote.isPrivate ? 'Убрать из привата' : 'В приват'}</span>
+                            </button>
+                          )}
+
+                          {hasItemsAbove && showDelete && (
+                            <div
+                              className="h-px my-1"
+                              style={{ backgroundColor: hexToRgba(theme.text, 0.1) }}
+                            />
+                          )}
+
+                          {/* 6. В корзину */}
+                          {showDelete && (
+                            <button
+                              onClick={() => {
+                                setIsTrashConfirmOpen(true);
+                                setIsEditorMenuOpen(false);
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-red-500/15 text-red-500 active:scale-98 transition cursor-pointer text-left"
+                            >
+                              <Trash2 size={15} />
+                              <span>В корзину</span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()
                   ) : editorMenuTab === 'tags' ? (
                     /* Tag Selection Submenu */
                     <div className="flex flex-col gap-2 text-xs">

@@ -20,6 +20,7 @@ interface ColorPaletteModalProps {
   onClose: () => void;
   onApply: (color: string) => void;
   theme: ThemePreset;
+  title?: string;
 }
 
 export const ColorPaletteModal: React.FC<ColorPaletteModalProps> = ({
@@ -28,6 +29,7 @@ export const ColorPaletteModal: React.FC<ColorPaletteModalProps> = ({
   onClose,
   onApply,
   theme,
+  title,
 }) => {
   const [hsv, setHsv] = useState<HSV>(() => hexToHsv(initialColor || '#85B6FF'));
   const [hexInput, setHexInput] = useState<string>(initialColor || '#85B6FF');
@@ -168,7 +170,7 @@ export const ColorPaletteModal: React.FC<ColorPaletteModalProps> = ({
       >
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold tracking-tight">Выбор цвета</h3>
+          <h3 className="text-sm font-bold tracking-tight">{title || 'Выбор цвета'}</h3>
           <button
             type="button"
             onClick={onClose}

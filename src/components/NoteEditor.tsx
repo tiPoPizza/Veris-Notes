@@ -1467,6 +1467,182 @@ export const NoteEditor: React.FC = () => {
     updateNote(note.id, { title: e.target.value });
   };
 
+  // Helper to handle one-time formatting:
+  // When enabled, any new typed character is ALWAYS plain unformatted text,
+  // whether continuing after a formatted word, or inside a formatted word, or when formatting is active.
+  const handleOneTimeFormattingInsert = (insertedText: string): boolean => {
+    if (!quickSettings.oneTimeFormatting || !insertedText) return false;
+
+    const editor = editorRef.current;
+    if (!editor) return false;
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return false;
+
+    const range = sel.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return false;
+
+    // Clear active formatting command states (bold, italic, underline, strikeThrough)
+    ['bold', 'italic', 'underline', 'strikeThrough'].forEach(cmd => {
+      try {
+        if (document.queryCommandState(cmd)) {
+          document.execCommand(cmd, false, undefined);
+        }
+      } catch {}
+    });
+
+    if (!range.collapsed) {
+      range.deleteContents();
+    }
+
+    // Find if the cursor is inside an inline formatting element
+    let current: Node | null =
+      range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement
+        : range.startContainer;
+
+    let formattingAncestor: HTMLElement | null = null;
+
+    while (current && current !== editor) {
+      const el = current as HTMLElement;
+      const tagName = el.tagName ? el.tagName.toUpperCase() : '';
+      if (/^(DIV|P|H[1-6]|LI|UL|OL|BLOCKQUOTE|PRE|SECTION|ARTICLE)$/.test(tagName)) {
+        break;
+      }
+      const isFormatTag = /^(B|STRONG|I|EM|U|S|STRIKE|DEL|MARK|CODE|SUB|SUP|SPAN|FONT)$/.test(tagName);
+      const hasFormatStyle =
+        el.style &&
+        (el.style.fontWeight ||
+          el.style.fontStyle ||
+          el.style.textDecoration ||
+          el.style.backgroundColor ||
+          el.style.color ||
+          el.getAttribute('data-highlight') ||
+          el.getAttribute('data-font'));
+
+      if (isFormatTag || hasFormatStyle) {
+        formattingAncestor = el;
+      }
+      current = current.parentElement;
+    }
+
+    if (!formattingAncestor) {
+      return false;
+    }
+
+    const fmt = formattingAncestor;
+    const fmtParent = fmt.parentNode;
+    if (!fmtParent) return false;
+
+    // Check if cursor is at the end of the formatting element
+    const rangeToEnd = document.createRange();
+    rangeToEnd.setStart(range.startContainer, range.startOffset);
+    rangeToEnd.setEndAfter(fmt);
+    const isAtEnd = rangeToEnd.toString().length === 0;
+
+    // Check if cursor is at the beginning of the formatting element
+    const rangeToStart = document.createRange();
+    rangeToStart.setStartBefore(fmt);
+    rangeToStart.setEnd(range.startContainer, range.startOffset);
+    const isAtStart = rangeToStart.toString().length === 0;
+
+    if (isAtEnd) {
+      if (fmt.nextSibling && fmt.nextSibling.nodeType === Node.TEXT_NODE) {
+        const textNode = fmt.nextSibling as Text;
+        textNode.insertData(0, insertedText);
+        const newRange = document.createRange();
+        newRange.setStart(textNode, insertedText.length);
+        newRange.setEnd(textNode, insertedText.length);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      } else {
+        const newTextNode = document.createTextNode(insertedText);
+        if (fmt.nextSibling) {
+          fmtParent.insertBefore(newTextNode, fmt.nextSibling);
+        } else {
+          fmtParent.appendChild(newTextNode);
+        }
+        const newRange = document.createRange();
+        newRange.setStart(newTextNode, insertedText.length);
+        newRange.setEnd(newTextNode, insertedText.length);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      }
+      return true;
+    }
+
+    if (isAtStart) {
+      if (fmt.previousSibling && fmt.previousSibling.nodeType === Node.TEXT_NODE) {
+        const textNode = fmt.previousSibling as Text;
+        textNode.appendData(insertedText);
+        const newRange = document.createRange();
+        newRange.setStart(textNode, textNode.length);
+        newRange.setEnd(textNode, textNode.length);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      } else {
+        const newTextNode = document.createTextNode(insertedText);
+        fmtParent.insertBefore(newTextNode, fmt);
+        const newRange = document.createRange();
+        newRange.setStart(newTextNode, insertedText.length);
+        newRange.setEnd(newTextNode, insertedText.length);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      }
+      return true;
+    }
+
+    // Inside the formatted word / element: split fmt into two halves and insert plain text in between!
+    const afterRange = document.createRange();
+    afterRange.setStart(range.startContainer, range.startOffset);
+    afterRange.setEndAfter(fmt);
+    const afterFragment = afterRange.extractContents();
+
+    const plainTextNode = document.createTextNode(insertedText);
+
+    if (fmt.nextSibling) {
+      fmtParent.insertBefore(plainTextNode, fmt.nextSibling);
+    } else {
+      fmtParent.appendChild(plainTextNode);
+    }
+
+    if (plainTextNode.nextSibling) {
+      fmtParent.insertBefore(afterFragment, plainTextNode.nextSibling);
+    } else {
+      fmtParent.appendChild(afterFragment);
+    }
+
+    const newRange = document.createRange();
+    newRange.setStart(plainTextNode, insertedText.length);
+    newRange.setEnd(plainTextNode, insertedText.length);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+    return true;
+  };
+
+  // Listen for native beforeinput on editor for mobile virtual keyboards (Android Chrome / iOS Safari)
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const onNativeBeforeInput = (e: Event) => {
+      const inputEvent = e as InputEvent;
+      if (!quickSettings.oneTimeFormatting) return;
+      if (inputEvent.inputType === 'insertText' && inputEvent.data) {
+        const handled = handleOneTimeFormattingInsert(inputEvent.data);
+        if (handled) {
+          inputEvent.preventDefault();
+          handleEditorInput();
+        }
+      }
+    };
+
+    editor.addEventListener('beforeinput', onNativeBeforeInput);
+    return () => {
+      editor.removeEventListener('beforeinput', onNativeBeforeInput);
+    };
+  }, [quickSettings.oneTimeFormatting, handleEditorInput]);
+
   // Enforce enter newline and formatting reset, and handle mention navigation
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     // Intercept undo/redo keyboard shortcuts
@@ -1533,50 +1709,11 @@ export const NoteEditor: React.FC = () => {
       return;
     }
 
-    if (quickSettings.oneTimeFormatting && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-      const sel = window.getSelection();
-      if (sel && sel.isCollapsed) {
-        let node: Node | null = sel.anchorNode;
-        if (node && node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent || '';
-          const offset = sel.anchorOffset;
-
-          const parentElem = node.parentElement;
-          if (
-            parentElem &&
-            parentElem !== editorRef.current &&
-            offset === text.length &&
-            /^(B|I|U|STRONG|EM|SPAN|MARK)$/i.test(parentElem.tagName)
-          ) {
-            e.preventDefault();
-
-            const charToInsert = e.key;
-            const nextSibling = parentElem.nextSibling;
-
-            if (nextSibling && nextSibling.nodeType === Node.TEXT_NODE) {
-              nextSibling.textContent = (nextSibling.textContent || '') + charToInsert;
-              const range = document.createRange();
-              range.setStart(nextSibling, nextSibling.textContent.length);
-              range.setEnd(nextSibling, nextSibling.textContent.length);
-              sel.removeAllRanges();
-              sel.addRange(range);
-            } else {
-              const newTextNode = document.createTextNode(charToInsert);
-              if (parentElem.nextSibling) {
-                parentElem.parentNode?.insertBefore(newTextNode, parentElem.nextSibling);
-              } else {
-                parentElem.parentNode?.appendChild(newTextNode);
-              }
-              const range = document.createRange();
-              range.setStart(newTextNode, 1);
-              range.setEnd(newTextNode, 1);
-              sel.removeAllRanges();
-              sel.addRange(range);
-            }
-
-            handleEditorInput();
-          }
-        }
+    if (quickSettings.oneTimeFormatting && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const handled = handleOneTimeFormattingInsert(e.key);
+      if (handled) {
+        e.preventDefault();
+        handleEditorInput();
       }
     }
   };
@@ -2215,6 +2352,21 @@ export const NoteEditor: React.FC = () => {
               }, 250);
             }}
             onInput={handleEditorInput}
+            onBeforeInput={(e: React.FormEvent<HTMLDivElement>) => {
+              const nativeEvent = e.nativeEvent as InputEvent;
+              if (
+                quickSettings.oneTimeFormatting &&
+                nativeEvent &&
+                nativeEvent.inputType === 'insertText' &&
+                nativeEvent.data
+              ) {
+                const handled = handleOneTimeFormattingInsert(nativeEvent.data);
+                if (handled) {
+                  e.preventDefault();
+                  handleEditorInput();
+                }
+              }
+            }}
             onKeyDown={handleKeyDown}
             onPaste={handleEditorPaste}
             onDragStart={handleEditorDragStart}

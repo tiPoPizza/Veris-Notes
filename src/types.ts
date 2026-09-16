@@ -157,6 +157,36 @@ export const ALL_NOTE_TILE_ACTIONS: NoteTileActionId[] = [
   'delete',
 ];
 
+export type EditorQuickActionId =
+  | 'focusMode'
+  | 'pin'
+  | 'tag'
+  | 'block'
+  | 'export'
+  | 'private'
+  | 'delete';
+
+export const ALL_EDITOR_QUICK_ACTIONS: EditorQuickActionId[] = [
+  'focusMode',
+  'pin',
+  'tag',
+  'block',
+  'export',
+  'private',
+  'delete',
+];
+
+export const DEFAULT_PASTEL_HIGHLIGHT_COLORS: Array<{ id: string; color: string; label: string }> = [
+  { id: 'pastel-yellow', color: '#FEF08A', label: 'Пастельно-жёлтый' },
+  { id: 'pastel-peach', color: '#FED7AA', label: 'Пастельно-персиковый' },
+  { id: 'pastel-pink', color: '#FBCFE8', label: 'Пастельно-розовый' },
+  { id: 'pastel-lavender', color: '#DDD6FE', label: 'Пастельно-сиреневый' },
+  { id: 'pastel-sky', color: '#BAE6FD', label: 'Пастельно-голубой' },
+  { id: 'pastel-mint', color: '#BBF7D0', label: 'Пастельно-мятный' },
+  { id: 'pastel-aqua', color: '#99F6E4', label: 'Пастельно-бирюзовый' },
+  { id: 'pastel-slate', color: '#E2E8F0', label: 'Пастельно-серый' },
+];
+
 export interface QuickSettings {
   showBorder: boolean;
   showCharCount: boolean;
@@ -168,9 +198,11 @@ export interface QuickSettings {
   oneTimeFormatting: boolean;
   formattingToolbarButtons?: FormattingToolbarButtonId[];
   noteTileActions?: NoteTileActionId[];
+  editorQuickActions?: EditorQuickActionId[];
+  customHighlightColors?: string[]; // 8 customizable hex highlight colors
   horizontalMainMenu?: boolean;
   pinSearchToHomeScreen?: boolean;
-  uppercaseBlockNames?: boolean;
+  showSidebarTabs?: boolean;
   sidebarTabs?: SidebarTabId[];
   actionMenuDisplayMode?: ActionMenuDisplayMode;
   actionMenuItems?: ActionMenuItemId[];

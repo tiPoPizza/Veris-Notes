@@ -227,10 +227,14 @@ export const Sidebar: React.FC = () => {
 
           {/* View Switcher Tabs - Dynamic Capsule with Horizontal Scroll, Clean Border, and No Gray Matryoshka Fill */}
           {(() => {
+            if (quickSettings.showSidebarTabs === false) return null;
+
             const tabsOrder: SidebarTabId[] =
-              quickSettings.sidebarTabs && quickSettings.sidebarTabs.length > 0
+              quickSettings.sidebarTabs !== undefined
                 ? quickSettings.sidebarTabs
                 : ['notes', 'tasks'];
+
+            if (tabsOrder.length === 0) return null;
 
             const isMultiTab = tabsOrder.length > 2;
 
@@ -1004,7 +1008,7 @@ export const Sidebar: React.FC = () => {
                               className="flex items-center gap-1.5 text-xs font-bold opacity-90 hover:opacity-100 transition cursor-pointer truncate flex-1 pr-1"
                             >
                               {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                              <span className={`truncate ${quickSettings.uppercaseBlockNames ? 'uppercase' : ''}`}>{block.name}</span>
+                              <span className="truncate">{block.name}</span>
                               <span className="text-[10px] opacity-50 ml-1 font-semibold">{blockNotes.length}</span>
                             </button>
 

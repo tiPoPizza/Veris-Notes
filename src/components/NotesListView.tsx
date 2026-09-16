@@ -1104,11 +1104,7 @@ export const NotesListView: React.FC = () => {
       )}
 
       {/* Dynamic Blocks Rendering */}
-      <div
-        className={`flex-1 flex flex-col min-h-0 transition-opacity duration-200 ${
-          isTagSearchOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
-        }`}
-      >
+      <div className="flex-1 flex flex-col min-h-0">
         {filteredNotes.length === 0 ? (
         <div className="text-center py-16 opacity-50">
           <p className="text-sm font-medium">
@@ -1146,7 +1142,7 @@ export const NotesListView: React.FC = () => {
                 {/* Block Header with Actions */}
                 <div className="flex items-center justify-between pb-1.5 shrink-0 relative">
                   <div className="flex items-center gap-2">
-                    <h2 className={`text-xs font-semibold tracking-wider opacity-60 flex items-center gap-1.5 ${quickSettings.uppercaseBlockNames ? 'uppercase' : ''}`}>
+                    <h2 className="text-xs font-semibold tracking-wider opacity-60 flex items-center gap-1.5">
                       <span>{block.name}</span>
                       <span className="text-[11px] font-normal opacity-60 ml-0.5">{blockNotes.length}</span>
                     </h2>
@@ -1265,7 +1261,7 @@ export const NotesListView: React.FC = () => {
                 {/* Block Header with Actions */}
                 <div className="flex items-center justify-between relative">
                   <div className="flex items-center gap-2">
-                    <h2 className={`text-xs font-semibold tracking-wider opacity-60 flex items-center gap-1.5 ${quickSettings.uppercaseBlockNames ? 'uppercase' : ''}`}>
+                    <h2 className="text-xs font-semibold tracking-wider opacity-60 flex items-center gap-1.5">
                       <span>{block.name}</span>
                       <span className="text-[10px] opacity-75 font-bold ml-0.5">{blockNotes.length}</span>
                     </h2>
