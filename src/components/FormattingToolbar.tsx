@@ -7,6 +7,7 @@ import {
   Quote,
   Code,
   Highlighter,
+  Baseline,
   Check,
   Scissors,
   Copy,
@@ -14,7 +15,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { hexToRgba, isLightColor } from '../themes';
 import { isColorLight } from '../utils/textUtils';
-import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS } from '../types';
+import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS, DEFAULT_FORMATTING_TOOLBAR_BUTTONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS } from '../types';
 
 export const HIGHLIGHT_COLORS = DEFAULT_PASTEL_HIGHLIGHT_COLORS;
 
@@ -30,11 +31,12 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
   oneTimeFormatting,
 }) => {
   const { theme, quickSettings } = useApp();
-  const [activeSubmenu, setActiveSubmenu] = useState<'align' | 'heading' | 'color' | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<'align' | 'heading' | 'color' | 'textColor' | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const alignBtnRef = useRef<HTMLButtonElement>(null);
   const headingBtnRef = useRef<HTMLButtonElement>(null);
   const colorBtnRef = useRef<HTMLButtonElement>(null);
+  const textColorBtnRef = useRef<HTMLButtonElement>(null);
 
   const [toolbarSize, setToolbarSize] = useState<{ width: number; height: number }>({
     width: 320,
@@ -181,9 +183,6 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
           sel.removeAllRanges();
           sel.addRange(range);
         }
-        if (document.queryCommandState(command)) {
-          document.execCommand(command, false, undefined);
-        }
       } catch {}
     }
   };
@@ -217,6 +216,36 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
       const internalSpan = container.querySelector('span[data-highlight="true"]');
       if (internalSpan) {
         const allSpans = document.querySelectorAll('span[data-highlight="true"]');
+        for (let i = 0; i < allSpans.length; i++) {
+          if (sel.containsNode(allSpans[i], true)) {
+            return allSpans[i] as HTMLElement;
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return null;
+  };
+
+  // Helper to find existing text-color span in selection or its ancestors
+  const getTextColorSpanInSelection = (): HTMLElement | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return null;
+
+    let node: Node | null = sel.anchorNode;
+    if (node && node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+    let span = (node as HTMLElement)?.closest('span[data-text-color="true"]') as HTMLElement | null;
+    if (span) return span;
+
+    try {
+      const range = sel.getRangeAt(0);
+      const container = document.createElement('div');
+      container.appendChild(range.cloneContents());
+      const internalSpan = container.querySelector('span[data-text-color="true"]');
+      if (internalSpan) {
+        const allSpans = document.querySelectorAll('span[data-text-color="true"]');
         for (let i = 0; i < allSpans.length; i++) {
           if (sel.containsNode(allSpans[i], true)) {
             return allSpans[i] as HTMLElement;
@@ -316,6 +345,12 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
       ? highlightSpan.getAttribute('data-color') || highlightSpan.style.backgroundColor
       : null;
 
+    const textColorSpan = getTextColorSpanInSelection();
+    const isTextColorActive = !!textColorSpan;
+    const activeTextColorHex = textColorSpan
+      ? textColorSpan.getAttribute('data-text-color-val') || textColorSpan.style.color
+      : null;
+
     return {
       isBold,
       isItalic,
@@ -326,6 +361,8 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
       activeAlignment,
       isHighlightActive,
       activeColorHex,
+      isTextColorActive,
+      activeTextColorHex,
     };
   };
 
@@ -339,6 +376,8 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
     activeAlignment,
     isHighlightActive,
     activeColorHex,
+    isTextColorActive,
+    activeTextColorHex,
   } = checkFormatState();
 
   // Helper to extract text nodes intersecting range
@@ -570,6 +609,117 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
     }
 
     onApplyFormat();
+    setActiveSubmenu(null);
+  };
+
+  // Change font text color (not background)
+  const handleTextColorClick = (colorHex: string) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+
+    const range = sel.getRangeAt(0);
+
+    // Collect all text nodes in selection
+    const textNodes = getTextNodesInRange(range);
+    if (textNodes.length === 0) return;
+
+    // Check if all selected text nodes are already wrapped in text-color span with requested colorHex
+    const existingSpansInSelection = new Set<HTMLElement>();
+    textNodes.forEach(tn => {
+      const sp = (tn.parentElement?.closest('span[data-text-color="true"]') as HTMLElement | null);
+      if (sp) existingSpansInSelection.add(sp);
+    });
+
+    const isAllSameColor =
+      existingSpansInSelection.size > 0 &&
+      Array.from(existingSpansInSelection).every(sp => {
+        const col = sp.getAttribute('data-text-color-val') || sp.style.color;
+        return hexOrRgbMatch(col, colorHex);
+      });
+
+    if (isAllSameColor) {
+      // Toggle off: remove text color span
+      existingSpansInSelection.forEach(sp => {
+        const parent = sp.parentNode;
+        if (parent) {
+          while (sp.firstChild) {
+            parent.insertBefore(sp.firstChild, sp);
+          }
+          parent.removeChild(sp);
+        }
+      });
+      onApplyFormat();
+      return;
+    }
+
+    // Apply color: process nodes in reverse order so splitting doesn't invalidate offsets of earlier nodes
+    const processedSpans: HTMLElement[] = [];
+
+    for (let i = textNodes.length - 1; i >= 0; i--) {
+      const node = textNodes[i];
+      if (!node.nodeValue) continue;
+
+      const isStart = (node === range.startContainer);
+      const isEnd = (node === range.endContainer);
+      const start = isStart ? range.startOffset : 0;
+      const end = isEnd ? range.endOffset : node.nodeValue.length;
+
+      if (start >= end) continue;
+
+      // Skip whitespace-only nodes that are purely inter-block whitespace
+      const content = node.nodeValue.substring(start, end);
+      if (/^[\r\n\t]+$/.test(content)) continue;
+
+      let targetNode = node;
+      if (end < targetNode.nodeValue.length) {
+        targetNode.splitText(end);
+      }
+      if (start > 0) {
+        targetNode = targetNode.splitText(start);
+      }
+
+      // Check if targetNode is already inside a text-color span
+      const parentSpan = targetNode.parentElement?.closest('span[data-text-color="true"]') as HTMLElement | null;
+      if (parentSpan) {
+        parentSpan.style.color = colorHex;
+        parentSpan.setAttribute('data-text-color-val', colorHex);
+        processedSpans.unshift(parentSpan);
+      } else {
+        const span = document.createElement('span');
+        span.setAttribute('data-text-color', 'true');
+        span.setAttribute('data-text-color-val', colorHex);
+        span.style.color = colorHex;
+        span.style.display = 'inline';
+
+        targetNode.parentNode?.insertBefore(span, targetNode);
+        span.appendChild(targetNode);
+        processedSpans.unshift(span);
+      }
+    }
+
+    if (processedSpans.length > 0) {
+      try {
+        if (oneTimeFormatting) {
+          const lastSpan = processedSpans[processedSpans.length - 1];
+          const newRange = document.createRange();
+          newRange.setStartAfter(lastSpan);
+          newRange.setEndAfter(lastSpan);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+        } else {
+          const newRange = document.createRange();
+          newRange.setStartBefore(processedSpans[0]);
+          newRange.setEndAfter(processedSpans[processedSpans.length - 1]);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+        }
+      } catch (e) {
+        // ignore selection restore error
+      }
+    }
+
+    onApplyFormat();
+    setActiveSubmenu(null);
   };
 
   // Active button inline styling per prompt requirement
@@ -594,13 +744,13 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
       ? AlignRight
       : AlignLeft;
 
-  const enabledButtons = quickSettings.formattingToolbarButtons || ALL_FORMATTING_TOOLBAR_BUTTONS;
+  const enabledButtons = quickSettings.formattingToolbarButtons || DEFAULT_FORMATTING_TOOLBAR_BUTTONS;
   const isBtnEnabled = (id: FormattingToolbarButtonId) => enabledButtons.includes(id);
 
   const hasClipboard = isBtnEnabled('cut') || isBtnEnabled('copy');
   const hasInline = isBtnEnabled('bold') || isBtnEnabled('italic') || isBtnEnabled('underline');
   const hasBlock = isBtnEnabled('align') || isBtnEnabled('heading') || isBtnEnabled('quote') || isBtnEnabled('code');
-  const hasColor = isBtnEnabled('color');
+  const hasColor = isBtnEnabled('color') || isBtnEnabled('textColor');
 
   if (!hasClipboard && !hasInline && !hasBlock && !hasColor) {
     return null;
@@ -779,9 +929,29 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
                 : getBtnStyle(activeSubmenu === 'color')
             }
             className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
-            title="Выделение цветом"
+            title="Выделение цветом (фон)"
           >
             <Highlighter size={14} className="sm:w-4 sm:h-4" />
+          </button>
+        )}
+
+        {/* Text Color Button (Right of Highlight Color) */}
+        {isBtnEnabled('textColor') && (
+          <button
+            ref={textColorBtnRef}
+            onClick={() => setActiveSubmenu(prev => (prev === 'textColor' ? null : 'textColor'))}
+            style={
+              isTextColorActive && activeTextColorHex
+                ? {
+                    backgroundColor: hexToRgba(activeTextColorHex, 0.2),
+                    color: activeTextColorHex,
+                  }
+                : getBtnStyle(activeSubmenu === 'textColor')
+            }
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Цвет текста"
+          >
+            <Baseline size={14} className="sm:w-4 sm:h-4" />
           </button>
         )}
       </div>
@@ -982,6 +1152,44 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
                 <button
                   key={c.id}
                   onClick={() => handleColorClick(c.color)}
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl transition cursor-pointer flex items-center justify-center relative shadow-sm ${
+                    isColorActive
+                      ? 'ring-2 ring-white ring-offset-2 scale-105'
+                      : 'hover:scale-105 opacity-90 hover:opacity-100'
+                  }`}
+                  style={{ backgroundColor: c.color }}
+                  title={c.label}
+                >
+                  {isColorActive && (
+                    <Check size={15} strokeWidth={3} style={{ color: checkColor }} className="drop-shadow-xs font-extrabold" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Submenu 4: Text Color Palette */}
+      {activeSubmenu === 'textColor' && isBtnEnabled('textColor') && (
+        <div
+          className="p-2.5 sm:p-3 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fadeIn overflow-y-auto custom-scrollbar"
+          style={{
+            ...getSubmenuPlacementStyle(textColorBtnRef, 196, 160),
+            backgroundColor: menuBg,
+            borderColor: menuBorder,
+          }}
+        >
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2 w-44 sm:w-48">
+            {activeHighlightColors.map(c => {
+              const isColorActive =
+                activeTextColorHex && hexOrRgbMatch(activeTextColorHex, c.color);
+              const checkColor = isColorLight(c.color) ? '#000000' : '#FFFFFF';
+
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => handleTextColorClick(c.color)}
                   className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl transition cursor-pointer flex items-center justify-center relative shadow-sm ${
                     isColorActive
                       ? 'ring-2 ring-white ring-offset-2 scale-105'

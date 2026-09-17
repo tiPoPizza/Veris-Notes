@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { PinnedSearchBar } from './PinnedSearchBar';
+import { FloatingCreateBar } from './FloatingCreateBar';
 
 export const TasksView: React.FC = () => {
   const {
@@ -638,19 +639,11 @@ export const TasksView: React.FC = () => {
 
       {/* Floating Bottom Center Create Button */}
       {!sidebarOpen && !isTagSearchOpen && (
-        <div className="fixed bottom-6 inset-x-0 z-30 pointer-events-none flex justify-center px-4">
-          <button
-            onClick={() => openCreateTaskListModal()}
-            className="pointer-events-auto flex items-center justify-center px-6 py-3 rounded-2xl text-xs font-extrabold shadow-xl backdrop-blur-xl border hover:opacity-80 active:scale-95 transition cursor-pointer"
-            style={{
-              backgroundColor: hexToRgba(theme.text, 0.08),
-              borderColor: quickSettings.showBorder ? theme.accent : 'transparent',
-              color: theme.text,
-            }}
-          >
-            <span>{t('createList')}</span>
-          </button>
-        </div>
+        <FloatingCreateBar
+          onCreate={() => openCreateTaskListModal()}
+          label={t('createList')}
+          currentView="tasks"
+        />
       )}
     </div>
   );

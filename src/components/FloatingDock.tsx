@@ -40,7 +40,6 @@ export const FloatingDock: React.FC = () => {
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState<boolean>(false);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState<boolean>(false);
   const [isFontModalOpen, setIsFontModalOpen] = useState<boolean>(false);
-  const [fontTarget, setFontTarget] = useState<'cursor' | 'title'>('cursor');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (viewMode !== 'editor' || isFocusMode) return null;
@@ -157,14 +156,11 @@ export const FloatingDock: React.FC = () => {
       <FontPickerModal
         isOpen={isFontModalOpen}
         onClose={() => setIsFontModalOpen(false)}
-        activeTarget={fontTarget}
-        onChangeTarget={t => setFontTarget(t)}
-        currentFontValue={quickSettings.fontFamily || 'sans'}
-        currentTitleFontValue={activeNote?.titleFont || quickSettings.fontFamily || 'sans'}
-        onSelectFont={(fontValue, cssFamily, target) => {
+        currentFontValue={activeNote?.titleFont || quickSettings.fontFamily || 'sans'}
+        onSelectFont={(fontValue, cssFamily) => {
           window.dispatchEvent(
             new CustomEvent('veris-apply-font', {
-              detail: { fontValue, cssFamily, target },
+              detail: { fontValue, cssFamily },
             })
           );
         }}

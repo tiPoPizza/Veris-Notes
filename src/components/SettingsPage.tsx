@@ -58,6 +58,7 @@ import {
   Quote,
   Code,
   Highlighter,
+  Baseline,
   Files,
   FolderArchive,
   Archive,
@@ -69,12 +70,25 @@ import {
   Maximize2,
   HardDrive,
   Brain,
+  ListTodo,
+  FolderPlus,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
 import { CustomTimePicker } from './CustomTimePicker';
 import { PinModal, PinModalMode } from './PinModal';
 import { FONT_FAMILY_OPTIONS } from '../utils/fonts';
-import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS, NoteTileActionId, ALL_NOTE_TILE_ACTIONS, EditorQuickActionId, ALL_EDITOR_QUICK_ACTIONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS } from '../types';
+import {
+  FormattingToolbarButtonId,
+  ALL_FORMATTING_TOOLBAR_BUTTONS,
+  DEFAULT_FORMATTING_TOOLBAR_BUTTONS,
+  NoteTileActionId,
+  ALL_NOTE_TILE_ACTIONS,
+  EditorQuickActionId,
+  ALL_EDITOR_QUICK_ACTIONS,
+  CreateBarActionId,
+  DEFAULT_PASTEL_HIGHLIGHT_COLORS,
+} from '../types';
 import { calculateStorageBreakdown, StorageBreakdownResult, formatBytes } from '../utils/storageBreakdown';
 import {
   ThemeRegistryModal,
@@ -132,7 +146,8 @@ const FORMATTING_BUTTON_OPTIONS: Array<{
   { id: 'heading', label: 'Заголовки (H)', desc: 'Уровни заголовков H1–H4 и обычный текст', letter: 'H', letterClass: 'font-bold' },
   { id: 'quote', label: 'Цитата', desc: 'Оформление текста блоком цитаты', icon: Quote },
   { id: 'code', label: 'Код', desc: 'Оформление моноширинным фрагментом кода', icon: Code },
-  { id: 'color', label: 'Выделение цветом', desc: 'Палитра цветного маркера для текста', icon: Highlighter },
+  { id: 'color', label: 'Выделение цветом (фон)', desc: 'Палитра цветного маркера для фона текста', icon: Highlighter },
+  { id: 'textColor', label: 'Цвет текста', desc: 'Изменение цвета самого шрифта (не фона)', icon: Baseline },
 ];
 
 const NOTE_TILE_ACTION_OPTIONS: Array<{
@@ -250,6 +265,7 @@ export const SettingsPage: React.FC = () => {
   const [isFormattingButtonsOpen, setIsFormattingButtonsOpen] = useState(false);
   const [isNoteActionButtonsOpen, setIsNoteActionButtonsOpen] = useState(false);
   const [isEditorQuickActionsOpen, setIsEditorQuickActionsOpen] = useState(false);
+  const [isCreateBarButtonsOpen, setIsCreateBarButtonsOpen] = useState(false);
 
   // Highlight colors customization state
   const [editingHighlightIndex, setEditingHighlightIndex] = useState<number | null>(null);
@@ -319,6 +335,62 @@ export const SettingsPage: React.FC = () => {
       desc: tr(opt.desc),
     }));
   }, [tr]);
+
+  const createBarButtonOptions = useMemo<Array<{
+    id: CreateBarActionId;
+    label: string;
+    desc: string;
+    icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string }>;
+  }>>(() => [
+    {
+      id: 'none',
+      label: tr('Отключено', 'Disabled'),
+      desc: tr('Кнопка отсутствует (по умолчанию)', 'No button (default)'),
+      icon: X,
+    },
+    {
+      id: 'aiChat',
+      label: tr('ИИ чат Anacrusa', 'Anacrusa AI Chat'),
+      desc: tr('Открыть боковую панель ИИ-ассистента', 'Open AI assistant drawer'),
+      icon: Sparkles,
+    },
+    {
+      id: 'webSearch',
+      label: tr('Веб-поиск', 'Web Search'),
+      desc: tr('Открыть окно поиска в сети', 'Open internet search modal'),
+      icon: Globe,
+    },
+    {
+      id: 'settings',
+      label: tr('Настройки', 'Settings'),
+      desc: tr('Перейти в настройки приложения', 'Open application settings'),
+      icon: SettingsIcon,
+    },
+    {
+      id: 'calendar',
+      label: tr('Календарь (иконка)', 'Calendar (icon)'),
+      desc: tr('Открыть календарь заметок и задач', 'Open notes & tasks calendar'),
+      icon: CalendarIcon,
+    },
+    {
+      id: 'calendarChevron',
+      label: tr('Календарь (шеврон)', 'Calendar (chevron)'),
+      desc: tr('Открыть календарь через шеврон', 'Open calendar via chevron'),
+      icon: ChevronDown,
+    },
+    {
+      id: 'dynamicNewItem',
+      label: tr('Новая заметка / задача', 'New Note / Task'),
+      desc: tr('Динамически: в заметках создаёт задачу, в задачах — заметку', 'Dynamic: task when in notes, note when in tasks'),
+      icon: ListTodo,
+    },
+    {
+      id: 'newBlock',
+      label: tr('Новый блок', 'New Block'),
+      desc: tr('Создать новый блок для заметок', 'Create a new block for notes'),
+      icon: FolderPlus,
+    },
+  ], [tr]);
 
   const tileDisplayOptions = useMemo(() => {
     return TILE_DISPLAY_OPTIONS.map(opt => ({
@@ -2004,8 +2076,8 @@ export const SettingsPage: React.FC = () => {
                     onClick={() => setQuickSettings(prev => ({ ...prev, oneTimeFormatting: !prev.oneTimeFormatting }))}
                   >
                     <div className="flex-1 pr-4">
-                      <div>{tr('Одноразовое форматирование')}</div>
-                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Сбрасывать активный инструмент форматирования после применения к тексту')}</div>
+                      <div>{tr('Быстрое форматирование')}</div>
+                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Применять стиль только к выделенному тексту (следующий ввод без форматирования)')}</div>
                     </div>
                     <div
                       className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -2049,7 +2121,7 @@ export const SettingsPage: React.FC = () => {
               {isFormattingButtonsOpen && (
                 <div className="space-y-1 pt-2 border-t animate-fadeIn" style={{ borderColor: cardBorder }}>
                   {formattingButtonOptions.map((btn, idx) => {
-                    const currentBtns = quickSettings.formattingToolbarButtons || ALL_FORMATTING_TOOLBAR_BUTTONS;
+                    const currentBtns = quickSettings.formattingToolbarButtons || DEFAULT_FORMATTING_TOOLBAR_BUTTONS;
                     const isEnabled = currentBtns.includes(btn.id);
                     const IconComp = btn.icon;
 
@@ -2331,6 +2403,198 @@ export const SettingsPage: React.FC = () => {
                 title={`${tr('Цвет маркера', 'Marker Color')} #${editingHighlightIndex + 1}`}
               />
             )}
+
+            {/* Create Bar Custom Buttons (Кнопки возле «Создать») */}
+            <div className="p-5 rounded-2xl border transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <button
+                type="button"
+                className="w-full flex items-center justify-between text-left cursor-pointer"
+                onClick={() => setIsCreateBarButtonsOpen(!isCreateBarButtonsOpen)}
+              >
+                <div>
+                  <div className="text-sm font-bold">{tr('Кнопки возле «Создать»', 'Buttons near "Create"')}</div>
+                  <div className="text-xs opacity-50 font-normal mt-0.5">
+                    {tr('Быстрые действия слева и справа от кнопки «Создать»', 'Quick actions to the left and right of "Create"')}
+                  </div>
+                </div>
+                <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-200 ${isCreateBarButtonsOpen ? 'rotate-180' : ''}`}
+                    style={{ color: isCreateBarButtonsOpen ? theme.accent : undefined }}
+                  />
+                </div>
+              </button>
+
+              {isCreateBarButtonsOpen && (
+                <div className="space-y-4 pt-4 border-t mt-4 animate-fadeIn" style={{ borderColor: cardBorder }}>
+                  {/* Live Visual Preview */}
+                  <div
+                    className="p-3.5 rounded-xl border flex flex-col items-center justify-center gap-2"
+                    style={{ backgroundColor: hexToRgba(theme.text, 0.03), borderColor: cardBorder }}
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-40">
+                      {tr('Превью отображения', 'Display Preview')}
+                    </span>
+                    <div className="flex items-center justify-center gap-2 py-1">
+                      {/* Left preview icon */}
+                      {quickSettings.createBarLeftAction && quickSettings.createBarLeftAction !== 'none' ? (
+                        <div
+                          className="flex items-center justify-center w-10 h-10 rounded-2xl border shadow-md backdrop-blur-md"
+                          style={{
+                            backgroundColor: hexToRgba(theme.text, 0.08),
+                            borderColor: quickSettings.showBorder ? theme.accent : hexToRgba(theme.text, 0.12),
+                          }}
+                        >
+                          {(() => {
+                            const opt = createBarButtonOptions.find(o => o.id === quickSettings.createBarLeftAction);
+                            const IconC = opt?.icon || Sparkles;
+                            return <IconC size={16} style={{ color: theme.accent }} />;
+                          })()}
+                        </div>
+                      ) : (
+                        <div
+                          className="w-10 h-10 rounded-2xl border border-dashed flex items-center justify-center text-[10px] opacity-30 select-none"
+                          style={{ borderColor: hexToRgba(theme.text, 0.2) }}
+                        >
+                          —
+                        </div>
+                      )}
+
+                      {/* Main button preview */}
+                      <div
+                        className="flex items-center justify-center px-6 py-2.5 rounded-2xl text-xs font-extrabold border shadow-md"
+                        style={{
+                          backgroundColor: hexToRgba(theme.text, 0.08),
+                          borderColor: quickSettings.showBorder ? theme.accent : hexToRgba(theme.text, 0.12),
+                          color: theme.text,
+                        }}
+                      >
+                        <span>{tr('Создать', 'Create')}</span>
+                      </div>
+
+                      {/* Right preview icon */}
+                      {quickSettings.createBarRightAction && quickSettings.createBarRightAction !== 'none' ? (
+                        <div
+                          className="flex items-center justify-center w-10 h-10 rounded-2xl border shadow-md backdrop-blur-md"
+                          style={{
+                            backgroundColor: hexToRgba(theme.text, 0.08),
+                            borderColor: quickSettings.showBorder ? theme.accent : hexToRgba(theme.text, 0.12),
+                          }}
+                        >
+                          {(() => {
+                            const opt = createBarButtonOptions.find(o => o.id === quickSettings.createBarRightAction);
+                            const IconC = opt?.icon || ChevronDown;
+                            return <IconC size={16} style={{ color: theme.accent }} />;
+                          })()}
+                        </div>
+                      ) : (
+                        <div
+                          className="w-10 h-10 rounded-2xl border border-dashed flex items-center justify-center text-[10px] opacity-30 select-none"
+                          style={{ borderColor: hexToRgba(theme.text, 0.2) }}
+                        >
+                          —
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Left Button Selector */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold opacity-80 flex items-center justify-between">
+                      <span>{tr('Кнопка слева', 'Left Button')}</span>
+                      <span className="text-[10px] opacity-40 font-normal">
+                        {createBarButtonOptions.find(o => o.id === (quickSettings.createBarLeftAction || 'none'))?.label}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {createBarButtonOptions.map(opt => {
+                        const isSelected = (quickSettings.createBarLeftAction || 'none') === opt.id;
+                        const IconComp = opt.icon;
+                        return (
+                          <button
+                            key={`left-${opt.id}`}
+                            type="button"
+                            onClick={() => setQuickSettings(prev => ({ ...prev, createBarLeftAction: opt.id }))}
+                            className={`flex items-center gap-2.5 p-2 rounded-xl text-left transition cursor-pointer border ${
+                              isSelected ? 'shadow-xs' : 'opacity-70 hover:opacity-100'
+                            }`}
+                            style={{
+                              backgroundColor: isSelected ? hexToRgba(theme.accent, 0.12) : hexToRgba(theme.text, 0.02),
+                              borderColor: isSelected ? theme.accent : cardBorder,
+                            }}
+                          >
+                            <div
+                              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
+                              style={{
+                                backgroundColor: isSelected ? hexToRgba(theme.accent, 0.2) : hexToRgba(theme.text, 0.05),
+                                borderColor: isSelected ? theme.accent : 'transparent',
+                              }}
+                            >
+                              <IconComp size={14} style={{ color: isSelected ? theme.accent : theme.text }} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-bold truncate" style={{ color: isSelected ? theme.accent : theme.text }}>
+                                {opt.label}
+                              </div>
+                              <div className="text-[10px] opacity-50 truncate">{opt.desc}</div>
+                            </div>
+                            {isSelected && <Check size={13} style={{ color: theme.accent }} className="shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Right Button Selector */}
+                  <div className="space-y-2 pt-2 border-t" style={{ borderColor: cardBorder }}>
+                    <div className="text-xs font-bold opacity-80 flex items-center justify-between">
+                      <span>{tr('Кнопка справа', 'Right Button')}</span>
+                      <span className="text-[10px] opacity-40 font-normal">
+                        {createBarButtonOptions.find(o => o.id === (quickSettings.createBarRightAction || 'none'))?.label}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {createBarButtonOptions.map(opt => {
+                        const isSelected = (quickSettings.createBarRightAction || 'none') === opt.id;
+                        const IconComp = opt.icon;
+                        return (
+                          <button
+                            key={`right-${opt.id}`}
+                            type="button"
+                            onClick={() => setQuickSettings(prev => ({ ...prev, createBarRightAction: opt.id }))}
+                            className={`flex items-center gap-2.5 p-2 rounded-xl text-left transition cursor-pointer border ${
+                              isSelected ? 'shadow-xs' : 'opacity-70 hover:opacity-100'
+                            }`}
+                            style={{
+                              backgroundColor: isSelected ? hexToRgba(theme.accent, 0.12) : hexToRgba(theme.text, 0.02),
+                              borderColor: isSelected ? theme.accent : cardBorder,
+                            }}
+                          >
+                            <div
+                              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
+                              style={{
+                                backgroundColor: isSelected ? hexToRgba(theme.accent, 0.2) : hexToRgba(theme.text, 0.05),
+                                borderColor: isSelected ? theme.accent : 'transparent',
+                              }}
+                            >
+                              <IconComp size={14} style={{ color: isSelected ? theme.accent : theme.text }} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-bold truncate" style={{ color: isSelected ? theme.accent : theme.text }}>
+                                {opt.label}
+                              </div>
+                              <div className="text-[10px] opacity-50 truncate">{opt.desc}</div>
+                            </div>
+                            {isSelected && <Check size={13} style={{ color: theme.accent }} className="shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

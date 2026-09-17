@@ -8,6 +8,7 @@ import { stripHtmlTags } from '../utils/textUtils';
 import { getFontFamilyStyle } from '../utils/fonts';
 import { PinnedSearchBar } from './PinnedSearchBar';
 import { PinModal } from './PinModal';
+import { FloatingCreateBar } from './FloatingCreateBar';
 import { semanticSearchService, NoteSemanticMatch } from '../services/semanticSearch';
 
 // Persist main screen scroll position across note opening/closing
@@ -1367,19 +1368,11 @@ export const NotesListView: React.FC = () => {
 
       {/* Floating Bottom Center Create Button */}
       {!sidebarOpen && !isTagSearchOpen && (
-        <div className="fixed bottom-6 inset-x-0 z-30 pointer-events-none flex justify-center px-4">
-          <button
-            onClick={() => createNote()}
-            className="pointer-events-auto flex items-center justify-center px-6 py-3 rounded-2xl text-xs font-extrabold shadow-xl backdrop-blur-xl border hover:opacity-80 active:scale-95 transition cursor-pointer"
-            style={{
-              backgroundColor: hexToRgba(theme.text, 0.08),
-              borderColor: quickSettings.showBorder ? theme.accent : 'transparent',
-              color: theme.text,
-            }}
-          >
-            <span>{t('create')}</span>
-          </button>
-        </div>
+        <FloatingCreateBar
+          onCreate={() => createNote()}
+          label={t('create')}
+          currentView="notes"
+        />
       )}
 
       {isPinModalOpen && (

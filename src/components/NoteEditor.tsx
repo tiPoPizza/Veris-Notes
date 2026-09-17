@@ -201,6 +201,7 @@ export const NoteEditor: React.FC = () => {
     isNoteSearchOpen,
     setIsNoteSearchOpen,
     quickSettings,
+    setQuickSettings,
     theme,
     language,
     isFocusMode,
@@ -1274,38 +1275,38 @@ export const NoteEditor: React.FC = () => {
     const handleApplyFontEvent = (e: any) => {
       const detail = e.detail;
       if (!detail) return;
-      const { fontValue, cssFamily, target } = detail;
+      const { fontValue, cssFamily } = detail;
 
-      if (target === 'title') {
-        if (note) {
-          updateNote(note.id, { titleFont: fontValue });
-        }
-        return;
+      // 1. Apply font to note
+      if (note) {
+        updateNote(note.id, { titleFont: fontValue });
       }
 
-      // Target is editor cursor / text
-      if (!editorRef.current) return;
-      editorRef.current.focus();
+      // 2. Update quickSettings font so all typing defaults to this font
+      setQuickSettings(prev => ({ ...prev, fontFamily: fontValue }));
 
-      const sel = window.getSelection();
-      let range: Range | null = null;
-      if (sel && sel.rangeCount > 0) {
-        const r = sel.getRangeAt(0);
-        if (editorRef.current.contains(r.commonAncestorContainer)) {
-          range = r;
+      // 3. If there is an active selection in the editor, wrap it in this font
+      if (editorRef.current) {
+        editorRef.current.focus();
+
+        const sel = window.getSelection();
+        let range: Range | null = null;
+        if (sel && sel.rangeCount > 0) {
+          const r = sel.getRangeAt(0);
+          if (editorRef.current.contains(r.commonAncestorContainer)) {
+            range = r;
+          }
         }
-      }
 
-      if (!range && lastSavedRangeRef.current && editorRef.current.contains(lastSavedRangeRef.current.commonAncestorContainer)) {
-        range = lastSavedRangeRef.current;
-        if (sel) {
-          sel.removeAllRanges();
-          sel.addRange(range);
+        if (!range && lastSavedRangeRef.current && editorRef.current.contains(lastSavedRangeRef.current.commonAncestorContainer)) {
+          range = lastSavedRangeRef.current;
+          if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
         }
-      }
 
-      if (range) {
-        if (!range.collapsed) {
+        if (range && !range.collapsed) {
           // Selected text -> wrap in span with font-family
           const selectedContent = range.extractContents();
           const span = document.createElement('span');
@@ -1320,38 +1321,6 @@ export const NoteEditor: React.FC = () => {
             sel.addRange(newRange);
             lastSavedRangeRef.current = newRange.cloneRange();
           }
-        } else {
-          // Collapsed cursor -> insert zero-width space span so typing continues in this font
-          const span = document.createElement('span');
-          span.style.fontFamily = cssFamily;
-          const zeroWidth = document.createTextNode('\u200B');
-          span.appendChild(zeroWidth);
-          range.insertNode(span);
-
-          if (sel) {
-            const newRange = document.createRange();
-            newRange.setStart(zeroWidth, 1);
-            newRange.setEnd(zeroWidth, 1);
-            sel.removeAllRanges();
-            sel.addRange(newRange);
-            lastSavedRangeRef.current = newRange.cloneRange();
-          }
-        }
-      } else {
-        // If nothing was focused in editor, append styled span
-        const span = document.createElement('span');
-        span.style.fontFamily = cssFamily;
-        const zeroWidth = document.createTextNode('\u200B');
-        span.appendChild(zeroWidth);
-        editorRef.current.appendChild(span);
-
-        if (sel) {
-          const newRange = document.createRange();
-          newRange.setStart(zeroWidth, 1);
-          newRange.setEnd(zeroWidth, 1);
-          sel.removeAllRanges();
-          sel.addRange(newRange);
-          lastSavedRangeRef.current = newRange.cloneRange();
         }
       }
 
@@ -1401,7 +1370,11 @@ export const NoteEditor: React.FC = () => {
           window.visualViewport &&
           window.innerHeight - window.visualViewport.height > 150);
 
-      if (!isKeyboardCurrentlyOpen && !wasEditingBeforeSelectionRef.current) {
+      const isTouchDevice =
+        typeof window !== 'undefined' &&
+        ('ontouchstart' in window || (navigator && navigator.maxTouchPoints > 0));
+
+      if (isTouchDevice && !isKeyboardCurrentlyOpen && !wasEditingBeforeSelectionRef.current) {
         if (
           document.activeElement instanceof HTMLElement &&
           document.activeElement === editorRef.current
@@ -1468,8 +1441,9 @@ export const NoteEditor: React.FC = () => {
   };
 
   // Helper to handle one-time formatting:
-  // When enabled, any new typed character is ALWAYS plain unformatted text,
-  // whether continuing after a formatted word, or inside a formatted word, or when formatting is active.
+  // Helper to handle one-time formatting:
+  // When enabled, continuing to write after a formatted element outputs normal unformatted text,
+  // while keeping the formatted text completely intact without stripping its styles.
   const handleOneTimeFormattingInsert = (insertedText: string): boolean => {
     if (!quickSettings.oneTimeFormatting || !insertedText) return false;
 
@@ -1482,20 +1456,11 @@ export const NoteEditor: React.FC = () => {
     const range = sel.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return false;
 
-    // Clear active formatting command states (bold, italic, underline, strikeThrough)
-    ['bold', 'italic', 'underline', 'strikeThrough'].forEach(cmd => {
-      try {
-        if (document.queryCommandState(cmd)) {
-          document.execCommand(cmd, false, undefined);
-        }
-      } catch {}
-    });
-
     if (!range.collapsed) {
       range.deleteContents();
     }
 
-    // Find if the cursor is inside an inline formatting element
+    // Find if the cursor is inside or right at the boundary of an inline formatting element
     let current: Node | null =
       range.startContainer.nodeType === Node.TEXT_NODE
         ? range.startContainer.parentElement
@@ -1518,6 +1483,8 @@ export const NoteEditor: React.FC = () => {
           el.style.backgroundColor ||
           el.style.color ||
           el.getAttribute('data-highlight') ||
+          el.getAttribute('data-text-color') ||
+          el.getAttribute('data-text-color-val') ||
           el.getAttribute('data-font'));
 
       if (isFormatTag || hasFormatStyle) {
@@ -1540,83 +1507,34 @@ export const NoteEditor: React.FC = () => {
     rangeToEnd.setEndAfter(fmt);
     const isAtEnd = rangeToEnd.toString().length === 0;
 
-    // Check if cursor is at the beginning of the formatting element
-    const rangeToStart = document.createRange();
-    rangeToStart.setStartBefore(fmt);
-    rangeToStart.setEnd(range.startContainer, range.startOffset);
-    const isAtStart = rangeToStart.toString().length === 0;
-
-    if (isAtEnd) {
-      if (fmt.nextSibling && fmt.nextSibling.nodeType === Node.TEXT_NODE) {
-        const textNode = fmt.nextSibling as Text;
-        textNode.insertData(0, insertedText);
-        const newRange = document.createRange();
-        newRange.setStart(textNode, insertedText.length);
-        newRange.setEnd(textNode, insertedText.length);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
-      } else {
-        const newTextNode = document.createTextNode(insertedText);
-        if (fmt.nextSibling) {
-          fmtParent.insertBefore(newTextNode, fmt.nextSibling);
-        } else {
-          fmtParent.appendChild(newTextNode);
-        }
-        const newRange = document.createRange();
-        newRange.setStart(newTextNode, insertedText.length);
-        newRange.setEnd(newTextNode, insertedText.length);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
-      }
-      return true;
+    // If cursor is editing inside the formatted element (not at the end boundary),
+    // let standard browser typing proceed so the word remains styled and intact
+    if (!isAtEnd) {
+      return false;
     }
 
-    if (isAtStart) {
-      if (fmt.previousSibling && fmt.previousSibling.nodeType === Node.TEXT_NODE) {
-        const textNode = fmt.previousSibling as Text;
-        textNode.appendData(insertedText);
-        const newRange = document.createRange();
-        newRange.setStart(textNode, textNode.length);
-        newRange.setEnd(textNode, textNode.length);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
-      } else {
-        const newTextNode = document.createTextNode(insertedText);
-        fmtParent.insertBefore(newTextNode, fmt);
-        const newRange = document.createRange();
-        newRange.setStart(newTextNode, insertedText.length);
-        newRange.setEnd(newTextNode, insertedText.length);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
-      }
-      return true;
-    }
-
-    // Inside the formatted word / element: split fmt into two halves and insert plain text in between!
-    const afterRange = document.createRange();
-    afterRange.setStart(range.startContainer, range.startOffset);
-    afterRange.setEndAfter(fmt);
-    const afterFragment = afterRange.extractContents();
-
-    const plainTextNode = document.createTextNode(insertedText);
-
-    if (fmt.nextSibling) {
-      fmtParent.insertBefore(plainTextNode, fmt.nextSibling);
+    // Cursor is at the end: append new character OUTSIDE the formatting container
+    if (fmt.nextSibling && fmt.nextSibling.nodeType === Node.TEXT_NODE) {
+      const textNode = fmt.nextSibling as Text;
+      textNode.insertData(0, insertedText);
+      const newRange = document.createRange();
+      newRange.setStart(textNode, insertedText.length);
+      newRange.setEnd(textNode, insertedText.length);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
     } else {
-      fmtParent.appendChild(plainTextNode);
+      const newTextNode = document.createTextNode(insertedText);
+      if (fmt.nextSibling) {
+        fmtParent.insertBefore(newTextNode, fmt.nextSibling);
+      } else {
+        fmtParent.appendChild(newTextNode);
+      }
+      const newRange = document.createRange();
+      newRange.setStart(newTextNode, insertedText.length);
+      newRange.setEnd(newTextNode, insertedText.length);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
     }
-
-    if (plainTextNode.nextSibling) {
-      fmtParent.insertBefore(afterFragment, plainTextNode.nextSibling);
-    } else {
-      fmtParent.appendChild(afterFragment);
-    }
-
-    const newRange = document.createRange();
-    newRange.setStart(plainTextNode, insertedText.length);
-    newRange.setEnd(plainTextNode, insertedText.length);
-    sel.removeAllRanges();
-    sel.addRange(newRange);
     return true;
   };
 
@@ -1626,6 +1544,7 @@ export const NoteEditor: React.FC = () => {
     if (!editor) return;
 
     const onNativeBeforeInput = (e: Event) => {
+      if (e.defaultPrevented) return;
       const inputEvent = e as InputEvent;
       if (!quickSettings.oneTimeFormatting) return;
       if (inputEvent.inputType === 'insertText' && inputEvent.data) {
@@ -1694,7 +1613,6 @@ export const NoteEditor: React.FC = () => {
 
     if (e.key === 'Enter') {
       setTimeout(() => {
-        document.execCommand('removeFormat', false, undefined);
         const sel = window.getSelection();
         if (sel && sel.anchorNode) {
           let node: Node | null = sel.anchorNode;
@@ -2332,6 +2250,7 @@ export const NoteEditor: React.FC = () => {
                 color: theme.text,
                 fontSize: `${quickSettings.fontSize}px`,
                 lineHeight: quickSettings.lineHeight || 1.6,
+                fontFamily: getFontFamilyStyle(note.titleFont || quickSettings.fontFamily || 'sans'),
               }}
             >
               {notePlaceholder}
@@ -2353,7 +2272,9 @@ export const NoteEditor: React.FC = () => {
             }}
             onInput={handleEditorInput}
             onBeforeInput={(e: React.FormEvent<HTMLDivElement>) => {
+              if (e.defaultPrevented) return;
               const nativeEvent = e.nativeEvent as InputEvent;
+              if (nativeEvent?.defaultPrevented) return;
               if (
                 quickSettings.oneTimeFormatting &&
                 nativeEvent &&
@@ -2385,6 +2306,7 @@ export const NoteEditor: React.FC = () => {
               color: theme.text,
               fontSize: `${quickSettings.fontSize}px`,
               lineHeight: quickSettings.lineHeight || 1.6,
+              fontFamily: getFontFamilyStyle(note.titleFont || quickSettings.fontFamily || 'sans'),
             }}
           />
         </div>

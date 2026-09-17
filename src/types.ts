@@ -123,9 +123,10 @@ export type FormattingToolbarButtonId =
   | 'heading'
   | 'quote'
   | 'code'
-  | 'color';
+  | 'color'
+  | 'textColor';
 
-export const ALL_FORMATTING_TOOLBAR_BUTTONS: FormattingToolbarButtonId[] = [
+export const DEFAULT_FORMATTING_TOOLBAR_BUTTONS: FormattingToolbarButtonId[] = [
   'cut',
   'copy',
   'bold',
@@ -136,6 +137,11 @@ export const ALL_FORMATTING_TOOLBAR_BUTTONS: FormattingToolbarButtonId[] = [
   'quote',
   'code',
   'color',
+];
+
+export const ALL_FORMATTING_TOOLBAR_BUTTONS: FormattingToolbarButtonId[] = [
+  ...DEFAULT_FORMATTING_TOOLBAR_BUTTONS,
+  'textColor',
 ];
 
 export type NoteTileActionId =
@@ -187,6 +193,16 @@ export const DEFAULT_PASTEL_HIGHLIGHT_COLORS: Array<{ id: string; color: string;
   { id: 'pastel-slate', color: '#E2E8F0', label: 'Пастельно-серый' },
 ];
 
+export type CreateBarActionId =
+  | 'none'
+  | 'aiChat'
+  | 'webSearch'
+  | 'settings'
+  | 'calendar'
+  | 'calendarChevron'
+  | 'dynamicNewItem'
+  | 'newBlock';
+
 export interface QuickSettings {
   showBorder: boolean;
   showCharCount: boolean;
@@ -199,6 +215,8 @@ export interface QuickSettings {
   formattingToolbarButtons?: FormattingToolbarButtonId[];
   noteTileActions?: NoteTileActionId[];
   editorQuickActions?: EditorQuickActionId[];
+  createBarLeftAction?: CreateBarActionId;
+  createBarRightAction?: CreateBarActionId;
   customHighlightColors?: string[]; // 8 customizable hex highlight colors
   horizontalMainMenu?: boolean;
   pinSearchToHomeScreen?: boolean;

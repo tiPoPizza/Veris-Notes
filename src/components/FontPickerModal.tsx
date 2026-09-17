@@ -1,37 +1,27 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Check, Search, Type, Heading } from 'lucide-react';
+import { X, Check, Search, Type } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { FONT_FAMILY_OPTIONS, FontOption } from '../utils/fonts';
 
 interface FontPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  activeTarget: 'cursor' | 'title';
-  onChangeTarget?: (target: 'cursor' | 'title') => void;
-  onSelectFont: (fontValue: string, cssFamily: string, target: 'cursor' | 'title') => void;
+  onSelectFont: (fontValue: string, cssFamily: string, target?: 'cursor' | 'title') => void;
   currentFontValue?: string;
+  activeTarget?: 'cursor' | 'title';
+  onChangeTarget?: (target: 'cursor' | 'title') => void;
   currentTitleFontValue?: string;
 }
 
 export const FontPickerModal: React.FC<FontPickerModalProps> = ({
   isOpen,
   onClose,
-  activeTarget,
-  onChangeTarget,
   onSelectFont,
   currentFontValue = 'sans',
-  currentTitleFontValue = 'sans',
 }) => {
   const { theme, quickSettings } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [currentTarget, setCurrentTarget] = useState<'cursor' | 'title'>(activeTarget);
-
-  // Sync internal target with prop if changed
-  React.useEffect(() => {
-    setCurrentTarget(activeTarget);
-  }, [activeTarget]);
 
   if (!isOpen) return null;
 
@@ -40,35 +30,17 @@ export const FontPickerModal: React.FC<FontPickerModalProps> = ({
   const cardBorder = quickSettings.showBorder ? theme.accent : hexToRgba(theme.text, 0.12);
   const modalBg = hexToRgba(theme.bg, 0.95);
 
-  const categories = [
-    { id: 'all', label: 'Все' },
-    { id: 'sans', label: 'Гротеск' },
-    { id: 'serif', label: 'Антиква' },
-    { id: 'mono', label: 'Моно' },
-    { id: 'handwriting', label: 'Рукописный' },
-    { id: 'display', label: 'Акцидентный' },
-  ];
-
   const filteredFonts = FONT_FAMILY_OPTIONS.filter(font => {
-    const matchesSearch =
+    return (
       font.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      font.value.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCat = selectedCategory === 'all' || font.category === selectedCategory;
-    return matchesSearch && matchesCat;
+      font.value.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
 
-  const activeSelectedValue =
-    currentTarget === 'title'
-      ? currentTitleFontValue || quickSettings.fontFamily || 'sans'
-      : currentFontValue || quickSettings.fontFamily || 'sans';
-
-  const handleTargetSwitch = (target: 'cursor' | 'title') => {
-    setCurrentTarget(target);
-    if (onChangeTarget) onChangeTarget(target);
-  };
+  const activeSelectedValue = currentFontValue || quickSettings.fontFamily || 'sans';
 
   const handleFontClick = (font: FontOption) => {
-    onSelectFont(font.value, font.cssFamily, currentTarget);
+    onSelectFont(font.value, font.cssFamily);
     onClose();
   };
 
@@ -88,21 +60,13 @@ export const FontPickerModal: React.FC<FontPickerModalProps> = ({
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b" style={{ borderColor: cardBorder }}>
+        {/* Header without icon container and without divider line */}
+        <div className="flex items-center justify-between pb-2">
           <div className="flex items-center gap-2.5">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-              style={{
-                backgroundColor: hexToRgba(theme.accent, 0.15),
-                color: theme.accent,
-              }}
-            >
-              <Type size={18} />
-            </div>
+            <Type size={20} style={{ color: theme.accent }} className="shrink-0" />
             <div>
               <h3 className="font-extrabold text-base leading-tight">Выбор шрифта</h3>
-              <p className="text-xs opacity-60">Выберите шрифт для ввода текста или заголовка</p>
+              <p className="text-xs opacity-60">Выберите шрифт для заметки</p>
             </div>
           </div>
           <button
@@ -114,47 +78,8 @@ export const FontPickerModal: React.FC<FontPickerModalProps> = ({
           </button>
         </div>
 
-        {/* Target Switcher: Заголовок / Текст */}
-        <div className="pt-3 pb-2 flex gap-2">
-          <button
-            type="button"
-            onClick={() => handleTargetSwitch('cursor')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border ${
-              currentTarget === 'cursor'
-                ? 'shadow-sm'
-                : 'hover:bg-white/5 opacity-70 hover:opacity-100'
-            }`}
-            style={{
-              backgroundColor: currentTarget === 'cursor' ? hexToRgba(theme.accent, 0.18) : 'transparent',
-              borderColor: currentTarget === 'cursor' ? theme.accent : cardBorder,
-              color: currentTarget === 'cursor' ? theme.accent : theme.text,
-            }}
-          >
-            <Type size={14} />
-            <span>Текст / Курсор</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTargetSwitch('title')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border ${
-              currentTarget === 'title'
-                ? 'shadow-sm'
-                : 'hover:bg-white/5 opacity-70 hover:opacity-100'
-            }`}
-            style={{
-              backgroundColor: currentTarget === 'title' ? hexToRgba(theme.accent, 0.18) : 'transparent',
-              borderColor: currentTarget === 'title' ? theme.accent : cardBorder,
-              color: currentTarget === 'title' ? theme.accent : theme.text,
-            }}
-          >
-            <Heading size={14} />
-            <span>Заголовок заметки</span>
-          </button>
-        </div>
-
         {/* Search input */}
-        <div className="py-1.5 shrink-0">
+        <div className="py-2 shrink-0">
           <div
             className="flex items-center gap-2 px-3 py-2 rounded-xl border"
             style={{ backgroundColor: cardBg, borderColor: cardBorder }}
@@ -174,29 +99,6 @@ export const FontPickerModal: React.FC<FontPickerModalProps> = ({
               </button>
             )}
           </div>
-        </div>
-
-        {/* Category Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 scrollbar-none text-xs font-semibold select-none shrink-0 mb-1">
-          {categories.map(cat => {
-            const isActive = selectedCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setSelectedCategory(cat.id)}
-                className="px-3 py-1.5 rounded-xl border whitespace-nowrap transition cursor-pointer shrink-0 text-xs font-medium"
-                style={{
-                  backgroundColor: isActive ? theme.accent : hexToRgba(theme.text, 0.05),
-                  borderColor: isActive ? theme.accent : cardBorder,
-                  color: isActive ? (isLightColor(theme.accent) ? '#000000' : '#FFFFFF') : theme.text,
-                  opacity: isActive ? 1 : 0.8,
-                }}
-              >
-                {cat.label}
-              </button>
-            );
-          })}
         </div>
 
         {/* Font List */}

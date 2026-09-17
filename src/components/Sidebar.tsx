@@ -1013,13 +1013,13 @@ export const Sidebar: React.FC = () => {
                             </button>
 
                             {/* 3-dots Menu trigger for block */}
-                            <div className="relative">
+                            <div className="relative shrink-0">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActiveBlockMenuId(isMenuOpen ? null : block.id);
                                 }}
-                                className="p-1 rounded-lg opacity-60 hover:opacity-100 hover:bg-white/10 transition cursor-pointer"
+                                className="w-6 h-6 rounded-lg opacity-60 hover:opacity-100 hover:bg-white/10 transition cursor-pointer flex items-center justify-center"
                                 title="Опции блока"
                               >
                                 <MoreHorizontal size={14} />
@@ -1102,7 +1102,7 @@ export const Sidebar: React.FC = () => {
 
                         {/* Notes in Block */}
                         {!isCollapsed && (
-                          <div className="pt-1 space-y-1 max-h-48 overflow-y-auto pr-1">
+                          <div className="pt-1 space-y-1 max-h-48 overflow-y-auto">
                             {blockNotes.map(note => {
                               const isSelected = activeNoteId === note.id && viewMode === 'editor';
                               const isMultiSelected = selectedNoteIds.includes(note.id);
@@ -1114,7 +1114,7 @@ export const Sidebar: React.FC = () => {
                                     setViewMode('editor');
                                     setSidebarOpen(false);
                                   }}
-                                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
+                                  className={`w-full flex items-center gap-2 pl-2.5 pr-0 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                                     isSelected
                                       ? 'border'
                                       : 'opacity-80 hover:opacity-100 hover:bg-white/5'
@@ -1136,7 +1136,7 @@ export const Sidebar: React.FC = () => {
                                   )}
                                   <span className="truncate flex-1 font-semibold">{note.title || 'Без названия'}</span>
 
-                                  {/* Circle Selection Button */}
+                                  {/* Circle Selection Button aligned under 3-dots */}
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -1147,7 +1147,7 @@ export const Sidebar: React.FC = () => {
                                           : [...prev, note.id]
                                       );
                                     }}
-                                    className="shrink-0 p-0.5 rounded-full hover:scale-110 transition cursor-pointer ml-1"
+                                    className="shrink-0 w-6 h-6 rounded-full hover:scale-110 transition cursor-pointer flex items-center justify-center"
                                     title={isMultiSelected ? "Снять выделение" : "Выделить заметку"}
                                   >
                                     <div

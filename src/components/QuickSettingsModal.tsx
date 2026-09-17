@@ -172,12 +172,12 @@ export const QuickSettingsModal: React.FC = () => {
 
             <div className="h-px mx-3" style={{ backgroundColor: dividerColor }} />
 
-            {/* Одноразовое форматирование */}
+            {/* Быстрое форматирование */}
             <div
               className="flex items-center justify-between py-2.5 px-3.5 rounded-b-2xl cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
               onClick={() => handleToggle('oneTimeFormatting')}
             >
-              <span className="text-xs font-medium">Одноразовое форматирование</span>
+              <span className="text-xs font-medium">{t('oneTimeFormatting')}</span>
               <div
                 className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
                   quickSettings.oneTimeFormatting ? 'justify-end' : 'justify-start'
