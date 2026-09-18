@@ -458,19 +458,24 @@ export const NotesListView: React.FC = () => {
                 <div className="flex flex-col gap-0.5 text-xs font-bold">
                   {/* Up / Down Reorder in 1 row (2 buttons) at the top */}
                   {hasReorder && (
-                    <div className="grid grid-cols-2 gap-1 mb-1">
+                    <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                       <button
                         disabled={!canMoveUp}
                         onClick={e => {
                           e.stopPropagation();
                           moveNoteInBlock(activeNote.id, 'up');
                         }}
-                        className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl transition cursor-pointer text-xs ${
+                        className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl transition cursor-pointer text-xs border ${
                           !canMoveUp
-                            ? 'opacity-30 cursor-not-allowed bg-white/5'
-                            : 'hover:bg-white/10 active:scale-95 bg-white/5'
+                            ? 'opacity-25 cursor-not-allowed'
+                            : 'hover:bg-white/5 active:scale-95'
                         }`}
-                        title="Переместить вверх"
+                        style={{
+                          backgroundColor: 'transparent',
+                          borderColor: theme.accent,
+                          color: theme.text,
+                        }}
+                        title="Вверх"
                       >
                         <ArrowUp size={14} style={{ color: theme.accent }} />
                         <span>Вверх</span>
@@ -482,12 +487,17 @@ export const NotesListView: React.FC = () => {
                           e.stopPropagation();
                           moveNoteInBlock(activeNote.id, 'down');
                         }}
-                        className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl transition cursor-pointer text-xs ${
+                        className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl transition cursor-pointer text-xs border ${
                           !canMoveDown
-                            ? 'opacity-30 cursor-not-allowed bg-white/5'
-                            : 'hover:bg-white/10 active:scale-95 bg-white/5'
+                            ? 'opacity-25 cursor-not-allowed'
+                            : 'hover:bg-white/5 active:scale-95'
                         }`}
-                        title="Переместить вниз"
+                        style={{
+                          backgroundColor: 'transparent',
+                          borderColor: theme.accent,
+                          color: theme.text,
+                        }}
+                        title="Вниз"
                       >
                         <ArrowDown size={14} style={{ color: theme.accent }} />
                         <span>Вниз</span>
@@ -1134,29 +1144,35 @@ export const NotesListView: React.FC = () => {
             return (
               <div
                 key={block.id}
-                className="w-[280px] sm:w-[320px] md:w-[360px] shrink-0 flex flex-col h-full rounded-3xl p-3.5 sm:p-4 border shadow-xs"
+                className="w-[280px] sm:w-[320px] md:w-[360px] shrink-0 flex flex-col h-full rounded-3xl border shadow-xs relative overflow-hidden"
                 style={{
                   backgroundColor: isLight ? '#FFFFFF' : hexToRgba(theme.text, 0.03),
                   borderColor: hexToRgba(theme.text, 0.1),
                 }}
               >
-                {/* Block Header with Actions */}
-                <div className="flex items-center justify-between pb-1.5 shrink-0 relative">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xs font-semibold tracking-wider opacity-60 flex items-center gap-1.5">
-                      <span>{block.name}</span>
-                      <span className="text-[11px] font-normal opacity-60 ml-0.5">{blockNotes.length}</span>
-                    </h2>
+                {/* Floating Block Header with name, note count and 3-dots */}
+                <div
+                  className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between px-3 py-1.5 rounded-2xl border backdrop-blur-xl transition-all"
+                  style={{
+                    backgroundColor: isLight ? 'rgba(255, 255, 255, 0.72)' : hexToRgba(theme.text, 0.07),
+                    borderColor: hexToRgba(theme.text, 0.07),
+                    color: theme.text,
+                  }}
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-semibold tracking-wider opacity-70 truncate">
+                      {block.name}
+                    </span>
                   </div>
 
                   {/* 3-dots Menu trigger for block */}
-                  <div className="relative">
+                  <div className="relative shrink-0">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setActiveBlockHeaderMenuId(isMenuOpen ? null : block.id);
                       }}
-                      className="p-1 rounded-lg opacity-60 hover:opacity-100 hover:bg-white/10 transition cursor-pointer"
+                      className="p-1 rounded-lg opacity-50 hover:opacity-100 hover:bg-white/10 active:scale-95 transition cursor-pointer"
                       style={{ color: theme.text }}
                       title="Опции блока"
                     >
@@ -1166,7 +1182,7 @@ export const NotesListView: React.FC = () => {
                     {/* Block Action Menu Popover */}
                     {isMenuOpen && (
                       <div
-                        className="absolute right-0 top-full mt-1 w-48 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-2xl z-40 flex flex-col gap-0.5 text-xs font-bold animate-fadeIn"
+                        className="absolute right-0 top-full mt-1.5 w-48 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-2xl z-50 flex flex-col gap-0.5 text-xs font-bold animate-fadeIn"
                         style={{
                           backgroundColor: isLight ? 'rgba(255, 255, 255, 0.98)' : hexToRgba(theme.bg, 0.98),
                           borderColor: hexToRgba(theme.text, 0.15),
@@ -1185,7 +1201,7 @@ export const NotesListView: React.FC = () => {
                           }`}
                         >
                           <ArrowLeft size={13} style={{ color: theme.accent }} />
-                          <span>Переместить влево</span>
+                          <span>Влево</span>
                         </button>
 
                         <button
@@ -1199,7 +1215,7 @@ export const NotesListView: React.FC = () => {
                           }`}
                         >
                           <ArrowRight size={13} style={{ color: theme.accent }} />
-                          <span>Переместить вправо</span>
+                          <span>Вправо</span>
                         </button>
 
                         {block.type === 'custom' && (
@@ -1234,13 +1250,13 @@ export const NotesListView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Notes in this block column (scrolling full column height) */}
+                {/* Notes in this block column (scrolling full column height down to border) */}
                 <div
                   id={`notes-block-col-${block.id}`}
                   onScroll={e => {
                     savedColumnScrollTops[block.id] = e.currentTarget.scrollTop;
                   }}
-                  className="flex-1 overflow-y-auto space-y-3 pr-1 pt-3 pb-8"
+                  className="flex-1 overflow-y-auto space-y-3 px-3 sm:px-3.5 pt-[58px] pb-2.5 h-full"
                 >
                   {blockNotes.map(note => renderNoteCard(note))}
                 </div>
@@ -1264,7 +1280,6 @@ export const NotesListView: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <h2 className="text-xs font-semibold tracking-wider opacity-60 flex items-center gap-1.5">
                       <span>{block.name}</span>
-                      <span className="text-[10px] opacity-75 font-bold ml-0.5">{blockNotes.length}</span>
                     </h2>
                   </div>
 
@@ -1304,7 +1319,7 @@ export const NotesListView: React.FC = () => {
                           }`}
                         >
                           <ArrowUp size={13} style={{ color: theme.accent }} />
-                          <span>Переместить вверх</span>
+                          <span>Вверх</span>
                         </button>
 
                         <button
@@ -1318,7 +1333,7 @@ export const NotesListView: React.FC = () => {
                           }`}
                         >
                           <ArrowDown size={13} style={{ color: theme.accent }} />
-                          <span>Переместить вниз</span>
+                          <span>Вниз</span>
                         </button>
 
                         {block.type === 'custom' && (

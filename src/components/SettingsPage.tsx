@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useApp, COHERE_MODELS, IONET_MODELS } from '../context/AppContext';
 import { getTranslation } from '../i18n';
 import { THEME_CATEGORIES, isLightColor, hexToRgba } from '../themes';
-import { LanguageCode, SidebarTabId } from '../types';
+import { LanguageCode, SidebarTabId, SidebarCreateDropdownActionId, DEFAULT_SIDEBAR_CREATE_DROPDOWN_ACTIONS } from '../types';
 import {
   Globe,
   Lock,
@@ -266,6 +266,7 @@ export const SettingsPage: React.FC = () => {
   const [isNoteActionButtonsOpen, setIsNoteActionButtonsOpen] = useState(false);
   const [isEditorQuickActionsOpen, setIsEditorQuickActionsOpen] = useState(false);
   const [isCreateBarButtonsOpen, setIsCreateBarButtonsOpen] = useState(false);
+  const [isSidebarCreateDropdownSettingsOpen, setIsSidebarCreateDropdownSettingsOpen] = useState(false);
 
   // Highlight colors customization state
   const [editingHighlightIndex, setEditingHighlightIndex] = useState<number | null>(null);
@@ -368,15 +369,9 @@ export const SettingsPage: React.FC = () => {
     },
     {
       id: 'calendar',
-      label: tr('Календарь (иконка)', 'Calendar (icon)'),
+      label: tr('Календарь', 'Calendar'),
       desc: tr('Открыть календарь заметок и задач', 'Open notes & tasks calendar'),
       icon: CalendarIcon,
-    },
-    {
-      id: 'calendarChevron',
-      label: tr('Календарь (шеврон)', 'Calendar (chevron)'),
-      desc: tr('Открыть календарь через шеврон', 'Open calendar via chevron'),
-      icon: ChevronDown,
     },
     {
       id: 'dynamicNewItem',
@@ -388,6 +383,50 @@ export const SettingsPage: React.FC = () => {
       id: 'newBlock',
       label: tr('Новый блок', 'New Block'),
       desc: tr('Создать новый блок для заметок', 'Create a new block for notes'),
+      icon: FolderPlus,
+    },
+  ], [tr]);
+
+  const sidebarCreateDropdownOptions = useMemo<Array<{
+    id: SidebarCreateDropdownActionId;
+    label: string;
+    desc: string;
+    icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string }>;
+  }>>(() => [
+    {
+      id: 'newBlock',
+      label: tr('Новый блок', 'New Block'),
+      desc: tr('Создать новый блок для заметок', 'Create a new block for notes'),
+      icon: Layers,
+    },
+    {
+      id: 'calendarEvent',
+      label: tr('Событие в календаре', 'Calendar Event'),
+      desc: tr('Быстро создать событие или напоминание в календаре', 'Quickly create event or reminder in calendar'),
+      icon: CalendarIcon,
+    },
+    {
+      id: 'newNote',
+      label: tr('Новая заметка', 'New Note'),
+      desc: tr('Создать новую заметку', 'Create a new note'),
+      icon: FileText,
+    },
+    {
+      id: 'newTask',
+      label: tr('Новая задача', 'New Task'),
+      desc: tr('Создать новый список задач', 'Create a new task list'),
+      icon: CheckSquare,
+    },
+    {
+      id: 'kanbanCard',
+      label: tr('Карточка канбана', 'Kanban Card'),
+      desc: tr('Создать карточку канбана', 'Create a kanban card'),
+      icon: Columns3,
+    },
+    {
+      id: 'kanbanColumn',
+      label: tr('Колонка канбана', 'Kanban Column'),
+      desc: tr('Создать новую колонку на канбан-доске', 'Create a new column on kanban board'),
       icon: FolderPlus,
     },
   ], [tr]);
@@ -2427,7 +2466,7 @@ export const SettingsPage: React.FC = () => {
               </button>
 
               {isCreateBarButtonsOpen && (
-                <div className="space-y-4 pt-4 border-t mt-4 animate-fadeIn" style={{ borderColor: cardBorder }}>
+                <div className="space-y-4 pt-2 mt-2 animate-fadeIn">
                   {/* Live Visual Preview */}
                   <div
                     className="p-3.5 rounded-xl border flex flex-col items-center justify-center gap-2"
@@ -2524,15 +2563,7 @@ export const SettingsPage: React.FC = () => {
                               borderColor: isSelected ? theme.accent : cardBorder,
                             }}
                           >
-                            <div
-                              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
-                              style={{
-                                backgroundColor: isSelected ? hexToRgba(theme.accent, 0.2) : hexToRgba(theme.text, 0.05),
-                                borderColor: isSelected ? theme.accent : 'transparent',
-                              }}
-                            >
-                              <IconComp size={14} style={{ color: isSelected ? theme.accent : theme.text }} />
-                            </div>
+                            <IconComp size={16} style={{ color: isSelected ? theme.accent : theme.text }} className="shrink-0" />
                             <div className="min-w-0 flex-1">
                               <div className="text-xs font-bold truncate" style={{ color: isSelected ? theme.accent : theme.text }}>
                                 {opt.label}
@@ -2547,7 +2578,7 @@ export const SettingsPage: React.FC = () => {
                   </div>
 
                   {/* Right Button Selector */}
-                  <div className="space-y-2 pt-2 border-t" style={{ borderColor: cardBorder }}>
+                  <div className="space-y-2 pt-1">
                     <div className="text-xs font-bold opacity-80 flex items-center justify-between">
                       <span>{tr('Кнопка справа', 'Right Button')}</span>
                       <span className="text-[10px] opacity-40 font-normal">
@@ -2571,15 +2602,7 @@ export const SettingsPage: React.FC = () => {
                               borderColor: isSelected ? theme.accent : cardBorder,
                             }}
                           >
-                            <div
-                              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
-                              style={{
-                                backgroundColor: isSelected ? hexToRgba(theme.accent, 0.2) : hexToRgba(theme.text, 0.05),
-                                borderColor: isSelected ? theme.accent : 'transparent',
-                              }}
-                            >
-                              <IconComp size={14} style={{ color: isSelected ? theme.accent : theme.text }} />
-                            </div>
+                            <IconComp size={16} style={{ color: isSelected ? theme.accent : theme.text }} className="shrink-0" />
                             <div className="min-w-0 flex-1">
                               <div className="text-xs font-bold truncate" style={{ color: isSelected ? theme.accent : theme.text }}>
                                 {opt.label}
@@ -2594,6 +2617,160 @@ export const SettingsPage: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Sidebar Create Dropdown Custom Buttons (Кнопки в шевроне создания) */}
+            <div className="p-5 rounded-2xl border transition-all" style={{ backgroundColor: cardBg, borderColor: cardBorder }}>
+              <button
+                type="button"
+                className="w-full flex items-center justify-between text-left cursor-pointer"
+                onClick={() => setIsSidebarCreateDropdownSettingsOpen(!isSidebarCreateDropdownSettingsOpen)}
+              >
+                <div>
+                  <div className="text-sm font-bold">{tr('Кнопки в шевроне создания', 'Create Chevron Buttons')}</div>
+                  <div className="text-xs opacity-50 font-normal mt-0.5">
+                    {tr('Выберите кнопки выпадающего списка возле кнопки создания и их порядок', 'Choose actions for the create dropdown and customize their order')}
+                  </div>
+                </div>
+                <div className="opacity-60 hover:opacity-100 transition shrink-0">
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform duration-200 ${isSidebarCreateDropdownSettingsOpen ? 'rotate-180' : ''}`}
+                    style={{ color: isSidebarCreateDropdownSettingsOpen ? theme.accent : undefined }}
+                  />
+                </div>
+              </button>
+
+              {isSidebarCreateDropdownSettingsOpen && (() => {
+                const currentActiveActions: SidebarCreateDropdownActionId[] =
+                  quickSettings.sidebarCreateDropdownActions !== undefined
+                    ? quickSettings.sidebarCreateDropdownActions
+                    : DEFAULT_SIDEBAR_CREATE_DROPDOWN_ACTIONS;
+
+                const allAvailableIds: SidebarCreateDropdownActionId[] = [
+                  'newBlock',
+                  'calendarEvent',
+                  'newNote',
+                  'newTask',
+                  'kanbanCard',
+                  'kanbanColumn',
+                ];
+
+                const orderedAllActions: SidebarCreateDropdownActionId[] = [
+                  ...currentActiveActions,
+                  ...allAvailableIds.filter(id => !currentActiveActions.includes(id)),
+                ];
+
+                const handleToggleAction = (actionId: SidebarCreateDropdownActionId) => {
+                  const isCurrentlyActive = currentActiveActions.includes(actionId);
+                  const nextActions = isCurrentlyActive
+                    ? currentActiveActions.filter(a => a !== actionId)
+                    : [...currentActiveActions, actionId];
+                  setQuickSettings(prev => ({ ...prev, sidebarCreateDropdownActions: nextActions }));
+                };
+
+                const handleMoveAction = (actionId: SidebarCreateDropdownActionId, direction: 'up' | 'down') => {
+                  const activeIdx = currentActiveActions.indexOf(actionId);
+                  if (activeIdx === -1) return;
+                  const targetIdx = direction === 'up' ? activeIdx - 1 : activeIdx + 1;
+                  if (targetIdx < 0 || targetIdx >= currentActiveActions.length) return;
+                  const nextActive = [...currentActiveActions];
+                  const temp = nextActive[activeIdx];
+                  nextActive[activeIdx] = nextActive[targetIdx];
+                  nextActive[targetIdx] = temp;
+                  setQuickSettings(prev => ({ ...prev, sidebarCreateDropdownActions: nextActive }));
+                };
+
+                return (
+                  <div className="space-y-2 pt-3 mt-3 animate-fadeIn">
+                    <div className="space-y-1.5">
+                      {orderedAllActions.map((actionId) => {
+                        const opt = sidebarCreateDropdownOptions.find(o => o.id === actionId);
+                        if (!opt) return null;
+                        const isChecked = currentActiveActions.includes(actionId);
+                        const activeIdx = currentActiveActions.indexOf(actionId);
+                        const IconComp = opt.icon;
+
+                        return (
+                          <div
+                            key={actionId}
+                            className="flex items-center justify-between p-2.5 rounded-2xl border transition-all gap-3"
+                            style={{
+                              backgroundColor: isChecked ? hexToRgba(theme.text, 0.04) : 'transparent',
+                              borderColor: hexToRgba(theme.text, isChecked ? 0.15 : 0.08),
+                              opacity: isChecked ? 1 : 0.6,
+                            }}
+                          >
+                            {/* Checkbox and Item Info */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAction(actionId)}
+                              className="flex items-center gap-3 flex-1 text-left cursor-pointer min-w-0"
+                            >
+                              <div
+                                className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-colors shrink-0 ${
+                                  isChecked ? 'text-white' : ''
+                                }`}
+                                style={{
+                                  backgroundColor: isChecked ? theme.accent : 'transparent',
+                                  borderColor: isChecked ? theme.accent : hexToRgba(theme.text, 0.3),
+                                }}
+                              >
+                                {isChecked && <Check size={12} strokeWidth={3} />}
+                              </div>
+
+                              <IconComp
+                                size={16}
+                                style={{ color: isChecked ? theme.accent : theme.text }}
+                                className="shrink-0"
+                              />
+
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-bold truncate" style={{ color: isChecked ? theme.accent : theme.text }}>
+                                  {opt.label}
+                                </div>
+                                <div className="text-[10px] opacity-50 truncate font-normal">
+                                  {opt.desc}
+                                </div>
+                              </div>
+                            </button>
+
+                            {/* Order arrows (only active items can be reordered) */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                disabled={!isChecked || activeIdx <= 0}
+                                onClick={() => handleMoveAction(actionId, 'up')}
+                                className="p-1.5 rounded-xl border opacity-70 hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed transition cursor-pointer"
+                                style={{
+                                  borderColor: hexToRgba(theme.text, 0.12),
+                                  backgroundColor: hexToRgba(theme.text, 0.04),
+                                }}
+                                title={tr('Переместить выше', 'Move Up')}
+                              >
+                                <ArrowUp size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!isChecked || activeIdx === -1 || activeIdx >= currentActiveActions.length - 1}
+                                onClick={() => handleMoveAction(actionId, 'down')}
+                                className="p-1.5 rounded-xl border opacity-70 hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed transition cursor-pointer"
+                                style={{
+                                  borderColor: hexToRgba(theme.text, 0.12),
+                                  backgroundColor: hexToRgba(theme.text, 0.04),
+                                }}
+                                title={tr('Переместить ниже', 'Move Down')}
+                              >
+                                <ArrowDown size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

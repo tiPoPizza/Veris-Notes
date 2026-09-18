@@ -688,7 +688,7 @@ export const KanbanView: React.FC = () => {
                           }`}
                         >
                           <ArrowUp size={13} style={{ color: theme.accent }} />
-                          <span>Переместить вверх</span>
+                          <span>Вверх</span>
                         </button>
 
                         <button
@@ -704,7 +704,7 @@ export const KanbanView: React.FC = () => {
                           }`}
                         >
                           <ArrowDown size={13} style={{ color: theme.accent }} />
-                          <span>Переместить вниз</span>
+                          <span>Вниз</span>
                         </button>
 
                         <div className="h-px my-1" style={{ backgroundColor: hexToRgba(theme.text, 0.1) }} />

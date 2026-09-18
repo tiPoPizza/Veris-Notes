@@ -203,6 +203,29 @@ export type CreateBarActionId =
   | 'dynamicNewItem'
   | 'newBlock';
 
+export type SidebarCreateDropdownActionId =
+  | 'newBlock'
+  | 'calendarEvent'
+  | 'newNote'
+  | 'newTask'
+  | 'kanbanCard'
+  | 'kanbanColumn';
+
+export const ALL_SIDEBAR_CREATE_DROPDOWN_ACTIONS: Array<{
+  id: SidebarCreateDropdownActionId;
+  label: string;
+  desc: string;
+}> = [
+  { id: 'newBlock', label: 'Новый блок', desc: 'Создать новый блок для заметок' },
+  { id: 'calendarEvent', label: 'Событие в календаре', desc: 'Быстро создать событие или напоминание в календаре' },
+  { id: 'newNote', label: 'Новая заметка', desc: 'Создать новую заметку' },
+  { id: 'newTask', label: 'Новая задача', desc: 'Создать новый список задач' },
+  { id: 'kanbanCard', label: 'Карточка канбана', desc: 'Создать карточку канбана' },
+  { id: 'kanbanColumn', label: 'Колонка канбана', desc: 'Создать новую колонку на канбан-доске' },
+];
+
+export const DEFAULT_SIDEBAR_CREATE_DROPDOWN_ACTIONS: SidebarCreateDropdownActionId[] = ['newBlock'];
+
 export interface QuickSettings {
   showBorder: boolean;
   showCharCount: boolean;
@@ -217,6 +240,7 @@ export interface QuickSettings {
   editorQuickActions?: EditorQuickActionId[];
   createBarLeftAction?: CreateBarActionId;
   createBarRightAction?: CreateBarActionId;
+  sidebarCreateDropdownActions?: SidebarCreateDropdownActionId[];
   customHighlightColors?: string[]; // 8 customizable hex highlight colors
   horizontalMainMenu?: boolean;
   pinSearchToHomeScreen?: boolean;

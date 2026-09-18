@@ -27,6 +27,7 @@ import { WebSearchDrawer } from './components/WebSearchDrawer';
 import { FloatingDock } from './components/FloatingDock';
 import { LockScreen } from './components/LockScreen';
 import { WorkspaceModal } from './components/WorkspaceModal';
+import { CalendarModal } from './components/CalendarModal';
 import { getFontFamilyStyle } from './utils/fonts';
 import { hexToRgba, isLightColor } from './themes';
 
@@ -43,6 +44,11 @@ const VerisAppContent: React.FC = () => {
     batchExportInitialMode,
     batchExportInitialBlockId,
     workspaceToast,
+    isCalendarEventModalOpen,
+    closeCalendarEventModal,
+    calendarEventModalDate,
+    editingCalendarEvent,
+    selectedCalendarDate,
   } = useApp();
 
   const isLight = isLightColor(theme.bg);
@@ -128,6 +134,12 @@ const VerisAppContent: React.FC = () => {
       <CreateBlockModal />
       <DeleteBlockModal />
       <WorkspaceModal />
+      <CalendarModal
+        isOpen={isCalendarEventModalOpen}
+        onClose={closeCalendarEventModal}
+        initialDate={calendarEventModalDate || selectedCalendarDate}
+        editingEvent={editingCalendarEvent}
+      />
 
       {/* Floating Workspace Notification */}
       {workspaceToast && (

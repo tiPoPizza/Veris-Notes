@@ -33,7 +33,7 @@ import {
   FolderSync,
 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
-import { NoteBlock, ActionMenuItemId, SidebarTabId } from '../types';
+import { NoteBlock, ActionMenuItemId, SidebarTabId, DEFAULT_SIDEBAR_CREATE_DROPDOWN_ACTIONS, SidebarCreateDropdownActionId } from '../types';
 import { ActionMenuSettingsModal } from './ActionMenuSettingsModal';
 
 export const Sidebar: React.FC = () => {
@@ -75,6 +75,7 @@ export const Sidebar: React.FC = () => {
     events,
     selectedCalendarDate,
     setSelectedCalendarDate,
+    openCreateCalendarEventModal,
     deletedNotes,
     openTrash,
     isPrivateLocked,
@@ -521,145 +522,196 @@ export const Sidebar: React.FC = () => {
           ) : (
             <>
               {/* Create Button with Chevron Dropdown */}
-              <div className="relative">
-                <div
-                  className="w-full flex items-center rounded-2xl border font-extrabold text-xs shadow-md transition overflow-hidden"
-                  style={{
-                    backgroundColor: theme.accent,
-                    borderColor: createBtnBorder,
-                    color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      if (viewMode === 'tasks') {
-                        openCreateTaskListModal();
-                      } else if (viewMode === 'kanban') {
-                        openCreateKanbanCardModal();
-                      } else if (isPrivateSpace) {
-                        const newNote = createNote();
-                        updateNote(newNote.id, { isPrivate: true });
-                        setActiveNoteId(newNote.id);
-                        setViewMode('editor');
-                        setSidebarOpen(false);
-                      } else {
-                        const newNote = createNote();
-                        setActiveNoteId(newNote.id);
-                        setViewMode('editor');
-                        setSidebarOpen(false);
-                      }
-                    }}
-                    className="flex-1 flex items-center gap-2 p-3.5 hover:opacity-90 active:scale-98 transition cursor-pointer text-left truncate"
-                  >
-                    {viewMode === 'tasks' ? (
-                      <>
-                        <CheckSquare size={16} className="shrink-0" />
-                        <span className="truncate">Новая задача</span>
-                      </>
-                    ) : viewMode === 'kanban' ? (
-                      <>
-                        <Columns3 size={16} className="shrink-0" />
-                        <span className="truncate">Новая задача</span>
-                      </>
-                    ) : (
-                      <>
-                        <FileText size={16} className="shrink-0" />
-                        <span className="truncate">Создать заметку</span>
-                      </>
+              {(() => {
+                const activeActions: SidebarCreateDropdownActionId[] =
+                  quickSettings.sidebarCreateDropdownActions !== undefined
+                    ? quickSettings.sidebarCreateDropdownActions
+                    : DEFAULT_SIDEBAR_CREATE_DROPDOWN_ACTIONS;
+                const hasChevron = activeActions.length > 0;
+
+                const renderDropdownItem = (actionId: SidebarCreateDropdownActionId) => {
+                  switch (actionId) {
+                    case 'newBlock':
+                      return (
+                        <button
+                          key="newBlock"
+                          onClick={() => {
+                            openCreateBlockModal();
+                            setIsCreateDropdownOpen(false);
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                        >
+                          <Layers size={14} style={{ color: theme.accent }} />
+                          <span>Новый блок</span>
+                        </button>
+                      );
+                    case 'calendarEvent':
+                      return (
+                        <button
+                          key="calendarEvent"
+                          onClick={() => {
+                            openCreateCalendarEventModal();
+                            setIsCreateDropdownOpen(false);
+                            setSidebarOpen(false);
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                        >
+                          <CalendarIcon size={14} style={{ color: theme.accent }} />
+                          <span>Событие в календаре</span>
+                        </button>
+                      );
+                    case 'newNote':
+                      return (
+                        <button
+                          key="newNote"
+                          onClick={() => {
+                            const newNote = createNote();
+                            if (isPrivateSpace) {
+                              updateNote(newNote.id, { isPrivate: true });
+                            }
+                            setActiveNoteId(newNote.id);
+                            setViewMode('editor');
+                            setIsCreateDropdownOpen(false);
+                            setSidebarOpen(false);
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                        >
+                          <FileText size={14} style={{ color: theme.accent }} />
+                          <span>Новая заметка</span>
+                        </button>
+                      );
+                    case 'newTask':
+                      return (
+                        <button
+                          key="newTask"
+                          onClick={() => {
+                            openCreateTaskListModal();
+                            setIsCreateDropdownOpen(false);
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                        >
+                          <CheckSquare size={14} style={{ color: theme.accent }} />
+                          <span>Новая задача</span>
+                        </button>
+                      );
+                    case 'kanbanCard':
+                      return (
+                        <button
+                          key="kanbanCard"
+                          onClick={() => {
+                            openCreateKanbanCardModal();
+                            setViewMode('kanban');
+                            setIsCreateDropdownOpen(false);
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                        >
+                          <Columns3 size={14} style={{ color: theme.accent }} />
+                          <span>Карточка канбана</span>
+                        </button>
+                      );
+                    case 'kanbanColumn':
+                      return (
+                        <button
+                          key="kanbanColumn"
+                          onClick={() => {
+                            openCreateKanbanColumnModal();
+                            setViewMode('kanban');
+                            setIsCreateDropdownOpen(false);
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
+                        >
+                          <FolderPlus size={14} style={{ color: theme.accent }} />
+                          <span>Колонка канбана</span>
+                        </button>
+                      );
+                    default:
+                      return null;
+                  }
+                };
+
+                return (
+                  <div className="relative">
+                    <div
+                      className="w-full flex items-center rounded-2xl border font-extrabold text-xs shadow-md transition overflow-hidden"
+                      style={{
+                        backgroundColor: theme.accent,
+                        borderColor: createBtnBorder,
+                        color: isLightColor(theme.accent) ? '#000000' : '#FFFFFF',
+                      }}
+                    >
+                      <button
+                        onClick={() => {
+                          if (viewMode === 'tasks') {
+                            openCreateTaskListModal();
+                          } else if (viewMode === 'kanban') {
+                            openCreateKanbanCardModal();
+                          } else if (isPrivateSpace) {
+                            const newNote = createNote();
+                            updateNote(newNote.id, { isPrivate: true });
+                            setActiveNoteId(newNote.id);
+                            setViewMode('editor');
+                            setSidebarOpen(false);
+                          } else {
+                            const newNote = createNote();
+                            setActiveNoteId(newNote.id);
+                            setViewMode('editor');
+                            setSidebarOpen(false);
+                          }
+                        }}
+                        className="flex-1 flex items-center gap-2 p-3.5 hover:opacity-90 active:scale-98 transition cursor-pointer text-left truncate"
+                      >
+                        {viewMode === 'tasks' ? (
+                          <>
+                            <CheckSquare size={16} className="shrink-0" />
+                            <span className="truncate">Новая задача</span>
+                          </>
+                        ) : viewMode === 'kanban' ? (
+                          <>
+                            <Columns3 size={16} className="shrink-0" />
+                            <span className="truncate">Новая задача</span>
+                          </>
+                        ) : (
+                          <>
+                            <FileText size={16} className="shrink-0" />
+                            <span className="truncate">Создать заметку</span>
+                          </>
+                        )}
+                      </button>
+
+                      {hasChevron && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsCreateDropdownOpen(!isCreateDropdownOpen);
+                          }}
+                          className="p-3.5 hover:bg-black/10 transition cursor-pointer"
+                          title="Меню создания"
+                        >
+                          <ChevronDown
+                            size={16}
+                            className={`transition-transform duration-200 ${isCreateDropdownOpen ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Create Dropdown Menu */}
+                    {isCreateDropdownOpen && hasChevron && (
+                      <div
+                        className="absolute top-full left-0 right-0 mt-1.5 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-2xl z-50 flex flex-col gap-1 text-xs font-bold animate-fadeIn"
+                        style={{
+                          backgroundColor: isLight ? 'rgba(255, 255, 255, 0.95)' : hexToRgba(theme.bg, 0.95),
+                          borderColor: hexToRgba(theme.text, 0.15),
+                          color: theme.text,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {activeActions.map((actionId) => renderDropdownItem(actionId))}
+                      </div>
                     )}
-                  </button>
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsCreateDropdownOpen(!isCreateDropdownOpen);
-                    }}
-                    className="p-3.5 hover:bg-black/10 transition cursor-pointer"
-                    title="Меню создания"
-                  >
-                    <ChevronDown
-                      size={16}
-                      className={`transition-transform duration-200 ${isCreateDropdownOpen ? 'rotate-180' : ''}`}
-                    />
-                  </button>
-                </div>
-
-                {/* Create Dropdown Menu */}
-                {isCreateDropdownOpen && (
-                  <div
-                    className="absolute top-full left-0 right-0 mt-1.5 p-1.5 rounded-2xl border shadow-2xl backdrop-blur-2xl z-50 flex flex-col gap-1 text-xs font-bold animate-fadeIn"
-                    style={{
-                      backgroundColor: isLight ? 'rgba(255, 255, 255, 0.95)' : hexToRgba(theme.bg, 0.95),
-                      borderColor: hexToRgba(theme.text, 0.15),
-                      color: theme.text,
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => {
-                        const newNote = createNote();
-                        if (isPrivateSpace) {
-                          updateNote(newNote.id, { isPrivate: true });
-                        }
-                        setActiveNoteId(newNote.id);
-                        setViewMode('editor');
-                        setIsCreateDropdownOpen(false);
-                        setSidebarOpen(false);
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                    >
-                      <FileText size={14} style={{ color: theme.accent }} />
-                      <span>Новая заметка</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        openCreateTaskListModal();
-                        setIsCreateDropdownOpen(false);
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                    >
-                      <CheckSquare size={14} style={{ color: theme.accent }} />
-                      <span>Новая задача</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        openCreateKanbanCardModal();
-                        setViewMode('kanban');
-                        setIsCreateDropdownOpen(false);
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                    >
-                      <Columns3 size={14} style={{ color: theme.accent }} />
-                      <span>Карточка канбана</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        openCreateKanbanColumnModal();
-                        setViewMode('kanban');
-                        setIsCreateDropdownOpen(false);
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                    >
-                      <FolderPlus size={14} style={{ color: theme.accent }} />
-                      <span>Колонка канбана</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        openCreateBlockModal();
-                        setIsCreateDropdownOpen(false);
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:scale-98 transition cursor-pointer text-left"
-                    >
-                      <Layers size={14} style={{ color: theme.accent }} />
-                      <span>Новый блок</span>
-                    </button>
                   </div>
-                )}
-              </div>
+                );
+              })()}
             </>
           )}
         </div>
@@ -786,11 +838,6 @@ export const Sidebar: React.FC = () => {
                               }}
                             >
                               <div className="flex items-center gap-2 truncate">
-                                <CheckSquare
-                                  size={14}
-                                  className="shrink-0"
-                                  style={{ color: isSelected ? theme.accent : 'inherit' }}
-                                />
                                 <span className="truncate font-semibold">{list.title || 'Без названия'}</span>
                               </div>
                               <span className="text-[10px] opacity-50 font-normal ml-1">
@@ -1051,7 +1098,7 @@ export const Sidebar: React.FC = () => {
                                     }`}
                                   >
                                     <ArrowUp size={13} style={{ color: theme.accent }} />
-                                    <span>Переместить вверх</span>
+                                    <span>Вверх</span>
                                   </button>
 
                                   <button
@@ -1065,7 +1112,7 @@ export const Sidebar: React.FC = () => {
                                     }`}
                                   >
                                     <ArrowDown size={13} style={{ color: theme.accent }} />
-                                    <span>Переместить вниз</span>
+                                    <span>Вниз</span>
                                   </button>
 
                                   {block.type === 'custom' && (
@@ -1129,10 +1176,8 @@ export const Sidebar: React.FC = () => {
                                     color: theme.text,
                                   }}
                                 >
-                                  {note.pinned ? (
-                                    <Pin size={13} className="shrink-0 fill-current" style={{ color: theme.accent }} />
-                                  ) : (
-                                    <FileText size={13} className="shrink-0 opacity-70" />
+                                  {note.pinned && (
+                                    <Pin size={12} className="shrink-0 fill-current opacity-70" style={{ color: theme.accent }} />
                                   )}
                                   <span className="truncate flex-1 font-semibold">{note.title || 'Без названия'}</span>
 

@@ -639,19 +639,24 @@ export const PrivateSpaceView: React.FC = () => {
               return (
                 <div className="flex flex-col gap-0.5 text-xs font-bold">
                   {/* 1. "Вверх / вниз" Reorder Actions */}
-                  <div className="grid grid-cols-2 gap-1 mb-1">
+                  <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                     <button
                       disabled={!canMoveUp}
                       onClick={e => {
                         e.stopPropagation();
                         moveNoteInBlock(activeMenuNote.id, 'up');
                       }}
-                      className={`flex items-center justify-center gap-1 py-1.5 rounded-xl transition cursor-pointer text-xs ${
+                      className={`flex items-center justify-center gap-1.5 py-1.5 rounded-xl transition cursor-pointer text-xs border ${
                         !canMoveUp
-                          ? 'opacity-30 cursor-not-allowed bg-white/5'
-                          : 'hover:bg-white/10 active:scale-95 bg-white/5'
+                          ? 'opacity-25 cursor-not-allowed'
+                          : 'hover:bg-white/5 active:scale-95'
                       }`}
-                      title="Переместить вверх"
+                      style={{
+                        backgroundColor: 'transparent',
+                        borderColor: theme.accent,
+                        color: theme.text,
+                      }}
+                      title="Вверх"
                     >
                       <ArrowUp size={14} style={{ color: theme.accent }} />
                       <span>Вверх</span>
@@ -663,12 +668,17 @@ export const PrivateSpaceView: React.FC = () => {
                         e.stopPropagation();
                         moveNoteInBlock(activeMenuNote.id, 'down');
                       }}
-                      className={`flex items-center justify-center gap-1 py-1.5 rounded-xl transition cursor-pointer text-xs ${
+                      className={`flex items-center justify-center gap-1.5 py-1.5 rounded-xl transition cursor-pointer text-xs border ${
                         !canMoveDown
-                          ? 'opacity-30 cursor-not-allowed bg-white/5'
-                          : 'hover:bg-white/10 active:scale-95 bg-white/5'
+                          ? 'opacity-25 cursor-not-allowed'
+                          : 'hover:bg-white/5 active:scale-95'
                       }`}
-                      title="Переместить вниз"
+                      style={{
+                        backgroundColor: 'transparent',
+                        borderColor: theme.accent,
+                        color: theme.text,
+                      }}
+                      title="Вниз"
                     >
                       <ArrowDown size={14} style={{ color: theme.accent }} />
                       <span>Вниз</span>

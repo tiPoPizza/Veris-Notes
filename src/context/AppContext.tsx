@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Note, NoteAttachment, TaskList, ThemePreset, QuickSettings, ViewMode, LanguageCode, LaunchScreen, Tag, Priority, TaskItem, NoteBlock, TaskSortOrder, SearchTarget, CalendarEvent, WebSearchSettings, WebSearchHistoryItem, KanbanColumn, KanbanCard, KanbanChecklistItem, PinUnlockResult, AnacrusaSettings, AnacrusaChatSession, CohereModelMeta, CohereModelId, AIModelMeta, SemanticSearchSettings, SemanticSearchTriggerMode, ALL_FORMATTING_TOOLBAR_BUTTONS, DEFAULT_FORMATTING_TOOLBAR_BUTTONS, ALL_NOTE_TILE_ACTIONS, ALL_EDITOR_QUICK_ACTIONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS, Workspace, TrashRetentionDays, ThemeScheduleSettings } from '../types';
+import { Note, NoteAttachment, TaskList, ThemePreset, QuickSettings, ViewMode, LanguageCode, LaunchScreen, Tag, Priority, TaskItem, NoteBlock, TaskSortOrder, SearchTarget, CalendarEvent, WebSearchSettings, WebSearchHistoryItem, KanbanColumn, KanbanCard, KanbanChecklistItem, PinUnlockResult, AnacrusaSettings, AnacrusaChatSession, CohereModelMeta, CohereModelId, AIModelMeta, SemanticSearchSettings, SemanticSearchTriggerMode, ALL_FORMATTING_TOOLBAR_BUTTONS, DEFAULT_FORMATTING_TOOLBAR_BUTTONS, ALL_NOTE_TILE_ACTIONS, ALL_EDITOR_QUICK_ACTIONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS, Workspace, TrashRetentionDays, ThemeScheduleSettings, DEFAULT_SIDEBAR_CREATE_DROPDOWN_ACTIONS } from '../types';
 import { DEFAULT_THEME, ALL_THEMES, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../themes';
 import { parseFileToNotes, ImportedNoteData } from '../utils/fileImporter';
 import { idbGet, idbSet, idbDelete, safeLocalStorageSet } from '../utils/dbStorage';
@@ -264,6 +264,7 @@ const INITIAL_QUICK_SETTINGS: QuickSettings = {
   editorQuickActions: ALL_EDITOR_QUICK_ACTIONS,
   createBarLeftAction: 'none',
   createBarRightAction: 'none',
+  sidebarCreateDropdownActions: DEFAULT_SIDEBAR_CREATE_DROPDOWN_ACTIONS,
   customHighlightColors: DEFAULT_PASTEL_HIGHLIGHT_COLORS.map(c => c.color),
   horizontalMainMenu: false,
   pinSearchToHomeScreen: false,
@@ -473,6 +474,11 @@ interface AppContextType {
   createCalendarEvent: (eventData: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>) => CalendarEvent;
   updateCalendarEvent: (id: string, updates: Partial<CalendarEvent>) => void;
   deleteCalendarEvent: (id: string) => void;
+  isCalendarEventModalOpen: boolean;
+  calendarEventModalDate: string | undefined;
+  editingCalendarEvent: CalendarEvent | null;
+  openCreateCalendarEventModal: (initialDate?: string, event?: CalendarEvent | null) => void;
+  closeCalendarEventModal: () => void;
 
   // Note CRUD
   createNote: (title?: string, content?: string, blockId?: string | null) => Note;
@@ -2912,6 +2918,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDeletedEvents([]);
   };
 
+  const [isCalendarEventModalOpen, setIsCalendarEventModalOpen] = useState<boolean>(false);
+  const [calendarEventModalDate, setCalendarEventModalDate] = useState<string | undefined>(undefined);
+  const [editingCalendarEvent, setEditingCalendarEvent] = useState<CalendarEvent | null>(null);
+
+  const openCreateCalendarEventModal = (initialDate?: string, event?: CalendarEvent | null) => {
+    setCalendarEventModalDate(initialDate);
+    setEditingCalendarEvent(event || null);
+    setIsCalendarEventModalOpen(true);
+  };
+
+  const closeCalendarEventModal = () => {
+    setIsCalendarEventModalOpen(false);
+    setEditingCalendarEvent(null);
+    setCalendarEventModalDate(undefined);
+  };
+
   const dismissReminder = (eventId: string, forever = false) => {
     if (forever) {
       updateCalendarEvent(eventId, { reminderDismissedForever: true });
@@ -3526,6 +3548,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         permanentlyDeleteCalendarEvent,
         clearAllDeletedCalendarEvents,
         restoreAllDeletedCalendarEvents,
+        isCalendarEventModalOpen,
+        calendarEventModalDate,
+        editingCalendarEvent,
+        openCreateCalendarEventModal,
+        closeCalendarEventModal,
 
         kanbanColumns,
         kanbanCards,
