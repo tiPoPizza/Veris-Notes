@@ -57,6 +57,7 @@ import {
   AlignLeft,
   Quote,
   Code,
+  List,
   Highlighter,
   Baseline,
   Files,
@@ -146,6 +147,7 @@ const FORMATTING_BUTTON_OPTIONS: Array<{
   { id: 'heading', label: 'Заголовки (H)', desc: 'Уровни заголовков H1–H4 и обычный текст', letter: 'H', letterClass: 'font-bold' },
   { id: 'quote', label: 'Цитата', desc: 'Оформление текста блоком цитаты', icon: Quote },
   { id: 'code', label: 'Код', desc: 'Оформление моноширинным фрагментом кода', icon: Code },
+  { id: 'list', label: 'Списки', desc: 'Числа (1.), буллиты (•) и буквы (a, b, c)', icon: List },
   { id: 'color', label: 'Выделение цветом (фон)', desc: 'Палитра цветного маркера для фона текста', icon: Highlighter },
   { id: 'textColor', label: 'Цвет текста', desc: 'Изменение цвета самого шрифта (не фона)', icon: Baseline },
 ];
@@ -1330,9 +1332,6 @@ export const SettingsPage: React.FC = () => {
               >
                 <div>
                   <div className="text-sm font-bold">{tr('Раздельные воркспейсы')}</div>
-                  <div className="text-xs opacity-50 font-normal mt-0.5">
-                    {tr('Изолированные рабочие пространства')}
-                  </div>
                 </div>
                 <div
                   className={`w-10 h-6 rounded-full p-1 transition-colors flex items-center shrink-0 ${
@@ -1347,7 +1346,7 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               {workspacesEnabled && (
-                <div className="pt-4 border-t mt-4 space-y-4" style={{ borderColor: cardBorder }}>
+                <div className="pt-3 mt-3 space-y-4">
                   <button
                     type="button"
                     onClick={() => setIsWorkspacesOpen(prev => !prev)}
@@ -2050,7 +2049,6 @@ export const SettingsPage: React.FC = () => {
                   >
                     <div className="flex-1 pr-4">
                       <div>{tr('Счётчик символов')}</div>
-                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать количество символов под заголовком заметки')}</div>
                     </div>
                     <div
                       className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -2072,7 +2070,6 @@ export const SettingsPage: React.FC = () => {
                   >
                     <div className="flex-1 pr-4">
                       <div>{tr('Счётчик слов')}</div>
-                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать количество слов под заголовком заметки')}</div>
                     </div>
                     <div
                       className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -2094,7 +2091,6 @@ export const SettingsPage: React.FC = () => {
                   >
                     <div className="flex-1 pr-4">
                       <div>{tr('Дата изменения')}</div>
-                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Отображать дату последнего изменения заметки')}</div>
                     </div>
                     <div
                       className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -2116,7 +2112,6 @@ export const SettingsPage: React.FC = () => {
                   >
                     <div className="flex-1 pr-4">
                       <div>{tr('Быстрое форматирование')}</div>
-                      <div className="text-[10px] opacity-50 font-normal mt-0.5">{tr('Применять стиль только к выделенному тексту (следующий ввод без форматирования)')}</div>
                     </div>
                     <div
                       className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
@@ -2144,9 +2139,6 @@ export const SettingsPage: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold opacity-85">{tr('Кнопки меню форматирования')}</span>
                   </div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">
-                    {tr('Выберите, какие кнопки отображать во всплывающем меню при выделении текста в заметке')}
-                  </div>
                 </div>
                 <div className="opacity-60 hover:opacity-100 transition shrink-0">
                   <ChevronDown
@@ -2158,7 +2150,7 @@ export const SettingsPage: React.FC = () => {
               </button>
 
               {isFormattingButtonsOpen && (
-                <div className="space-y-1 pt-2 border-t animate-fadeIn" style={{ borderColor: cardBorder }}>
+                <div className="space-y-1 pt-1 animate-fadeIn">
                   {formattingButtonOptions.map((btn, idx) => {
                     const currentBtns = quickSettings.formattingToolbarButtons || DEFAULT_FORMATTING_TOOLBAR_BUTTONS;
                     const isEnabled = currentBtns.includes(btn.id);
@@ -2182,23 +2174,14 @@ export const SettingsPage: React.FC = () => {
                       >
                         <div className="flex items-center gap-2.5 flex-1 pr-4 min-w-0">
                           {btn.letter ? (
-                            <div
-                              className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs border shrink-0 ${btn.letterClass || ''}`}
-                              style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.04) }}
-                            >
+                            <span className={`w-5 text-center text-sm font-bold shrink-0 opacity-85 ${btn.letterClass || ''}`}>
                               {btn.letter}
-                            </div>
+                            </span>
                           ) : IconComp ? (
-                            <div
-                              className="w-7 h-7 rounded-xl flex items-center justify-center border shrink-0 opacity-80"
-                              style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.04) }}
-                            >
-                              <IconComp size={14} />
-                            </div>
+                            <IconComp size={16} className="shrink-0 opacity-80" />
                           ) : null}
                           <div className="min-w-0">
                             <div className="truncate">{btn.label}</div>
-                            <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">{btn.desc}</div>
                           </div>
                         </div>
 
@@ -2230,9 +2213,6 @@ export const SettingsPage: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold opacity-85">{tr('Кнопки меню заметки')}</span>
                   </div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">
-                    {tr('Выберите, какие кнопки отображать во всплывающем меню действий с заметкой')}
-                  </div>
                 </div>
                 <div className="opacity-60 hover:opacity-100 transition shrink-0">
                   <ChevronDown
@@ -2244,7 +2224,7 @@ export const SettingsPage: React.FC = () => {
               </button>
 
               {isNoteActionButtonsOpen && (
-                <div className="space-y-1 pt-2 border-t animate-fadeIn" style={{ borderColor: cardBorder }}>
+                <div className="space-y-1 pt-1 animate-fadeIn">
                   {noteTileActionOptions.map((btn, idx) => {
                     const currentActions = quickSettings.noteTileActions || ALL_NOTE_TILE_ACTIONS;
                     const isEnabled = currentActions.includes(btn.id);
@@ -2267,15 +2247,9 @@ export const SettingsPage: React.FC = () => {
                         onClick={handleToggle}
                       >
                         <div className="flex items-center gap-2.5 flex-1 pr-4 min-w-0">
-                          <div
-                            className="w-7 h-7 rounded-xl flex items-center justify-center border shrink-0 opacity-80"
-                            style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.04) }}
-                          >
-                            <IconComp size={14} style={{ color: theme.accent }} />
-                          </div>
+                          <IconComp size={16} style={{ color: theme.accent }} className="shrink-0 opacity-90" />
                           <div className="min-w-0">
                             <div className="truncate">{btn.label}</div>
-                            <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">{btn.desc}</div>
                           </div>
                         </div>
 
@@ -2307,9 +2281,6 @@ export const SettingsPage: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold opacity-85">{tr('Кнопки быстрых действий')}</span>
                   </div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">
-                    {tr('Выберите, какие действия отображать в меню редактора заметки (кнопка ⋮)')}
-                  </div>
                 </div>
                 <div className="opacity-60 hover:opacity-100 transition shrink-0">
                   <ChevronDown
@@ -2321,7 +2292,7 @@ export const SettingsPage: React.FC = () => {
               </button>
 
               {isEditorQuickActionsOpen && (
-                <div className="space-y-1 pt-2 border-t animate-fadeIn" style={{ borderColor: cardBorder }}>
+                <div className="space-y-1 pt-1 animate-fadeIn">
                   {editorQuickActionOptions.map((btn, idx) => {
                     const currentActions = quickSettings.editorQuickActions || ALL_EDITOR_QUICK_ACTIONS;
                     const isEnabled = currentActions.includes(btn.id);
@@ -2344,15 +2315,9 @@ export const SettingsPage: React.FC = () => {
                         onClick={handleToggle}
                       >
                         <div className="flex items-center gap-2.5 flex-1 pr-4 min-w-0">
-                          <div
-                            className="w-7 h-7 rounded-xl flex items-center justify-center border shrink-0 opacity-80"
-                            style={{ borderColor: cardBorder, backgroundColor: hexToRgba(theme.text, 0.04) }}
-                          >
-                            <IconComp size={14} style={{ color: theme.accent }} />
-                          </div>
+                          <IconComp size={16} style={{ color: theme.accent }} className="shrink-0 opacity-90" />
                           <div className="min-w-0">
                             <div className="truncate">{btn.label}</div>
-                            <div className="text-[10px] opacity-50 font-normal mt-0.5 line-clamp-1">{btn.desc}</div>
                           </div>
                         </div>
 
@@ -2378,9 +2343,6 @@ export const SettingsPage: React.FC = () => {
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="text-xs font-bold opacity-85">{tr('Цвета выделения текста', 'Text Highlight Colors')}</div>
-                  <div className="text-[10px] opacity-50 font-normal mt-0.5">
-                    {tr('Нажмите на цвет для выбора в палитре', 'Tap a color to customize in palette')}
-                  </div>
                 </div>
                 <button
                   type="button"
@@ -2452,9 +2414,6 @@ export const SettingsPage: React.FC = () => {
               >
                 <div>
                   <div className="text-sm font-bold">{tr('Кнопки возле «Создать»', 'Buttons near "Create"')}</div>
-                  <div className="text-xs opacity-50 font-normal mt-0.5">
-                    {tr('Быстрые действия слева и справа от кнопки «Создать»', 'Quick actions to the left and right of "Create"')}
-                  </div>
                 </div>
                 <div className="opacity-60 hover:opacity-100 transition shrink-0">
                   <ChevronDown
@@ -2568,7 +2527,6 @@ export const SettingsPage: React.FC = () => {
                               <div className="text-xs font-bold truncate" style={{ color: isSelected ? theme.accent : theme.text }}>
                                 {opt.label}
                               </div>
-                              <div className="text-[10px] opacity-50 truncate">{opt.desc}</div>
                             </div>
                             {isSelected && <Check size={13} style={{ color: theme.accent }} className="shrink-0" />}
                           </button>
@@ -2607,7 +2565,6 @@ export const SettingsPage: React.FC = () => {
                               <div className="text-xs font-bold truncate" style={{ color: isSelected ? theme.accent : theme.text }}>
                                 {opt.label}
                               </div>
-                              <div className="text-[10px] opacity-50 truncate">{opt.desc}</div>
                             </div>
                             {isSelected && <Check size={13} style={{ color: theme.accent }} className="shrink-0" />}
                           </button>
@@ -2628,9 +2585,6 @@ export const SettingsPage: React.FC = () => {
               >
                 <div>
                   <div className="text-sm font-bold">{tr('Кнопки в шевроне создания', 'Create Chevron Buttons')}</div>
-                  <div className="text-xs opacity-50 font-normal mt-0.5">
-                    {tr('Выберите кнопки выпадающего списка возле кнопки создания и их порядок', 'Choose actions for the create dropdown and customize their order')}
-                  </div>
                 </div>
                 <div className="opacity-60 hover:opacity-100 transition shrink-0">
                   <ChevronDown
@@ -2728,9 +2682,6 @@ export const SettingsPage: React.FC = () => {
                               <div className="min-w-0 flex-1">
                                 <div className="text-xs font-bold truncate" style={{ color: isChecked ? theme.accent : theme.text }}>
                                   {opt.label}
-                                </div>
-                                <div className="text-[10px] opacity-50 truncate font-normal">
-                                  {opt.desc}
                                 </div>
                               </div>
                             </button>

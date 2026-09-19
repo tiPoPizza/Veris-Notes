@@ -11,6 +11,8 @@ import { NoteReadModal } from './NoteReadModal';
 import { BlockNotesModal } from './BlockNotesModal';
 import { stripHtmlTags } from '../utils/textUtils';
 import { getFontFamilyStyle } from '../utils/fonts';
+import { applyListFormat, ListType } from '../utils/listFormatter';
+import { handleLinkDeletion, handleListBackspace } from '../utils/editorKeyboardHandler';
 
 /**
  * Generates a clean, bold straight seekbar SVG with accent color.
@@ -287,12 +289,19 @@ export const NoteEditor: React.FC = () => {
 
     const textNode = range.startContainer;
     if (textNode.nodeType === Node.TEXT_NODE) {
+      // Do not trigger if inside or adjacent to an existing mention link
+      const parentEl = textNode.parentElement;
+      if (parentEl && parentEl.closest('.veris-block-link, .veris-note-link, [data-block-id], [data-note-id], [contenteditable="false"]')) {
+        setMentionQuery(null);
+        return;
+      }
+
       const text = textNode.textContent || '';
       const offset = range.startOffset;
       const textBeforeCaret = text.slice(0, offset);
 
-      // Match @ followed by letters/digits/underscores
-      const match = textBeforeCaret.match(/@([^\s@]*)$/);
+      // Match @ preceded by start of string or whitespace, followed by letters/digits/underscores
+      const match = textBeforeCaret.match(/(?:^|[\s\u00A0])@([^\s@]*)$/);
       if (match) {
         const q = match[1];
         setMentionQuery(q);
@@ -442,7 +451,7 @@ export const NoteEditor: React.FC = () => {
 
       const linkSpan = document.createElement('span');
       linkSpan.className =
-        'veris-block-link font-semibold underline cursor-pointer px-0.5 mx-0.5 transition active:scale-95 inline-flex items-center gap-0.5 select-none';
+        'veris-block-link font-semibold underline cursor-pointer px-0.5 mx-0.5 transition active:scale-95 inline-flex items-center gap-0.5';
       linkSpan.setAttribute('data-block-id', targetBlock.id);
       linkSpan.setAttribute('contenteditable', 'false');
       linkSpan.style.color = theme.accent;
@@ -453,7 +462,7 @@ export const NoteEditor: React.FC = () => {
       const afterText = text.slice(offset);
 
       textNode.textContent = beforeText;
-      const spaceNode = document.createTextNode('\u00A0' + afterText);
+      const spaceNode = document.createTextNode(' ' + afterText);
 
       if (textNode.nextSibling) {
         textNode.parentNode?.insertBefore(linkSpan, textNode.nextSibling);
@@ -504,7 +513,7 @@ export const NoteEditor: React.FC = () => {
 
       const linkSpan = document.createElement('span');
       linkSpan.className =
-        'veris-note-link font-semibold underline cursor-pointer px-0.5 mx-0.5 transition active:scale-95 inline-flex items-center gap-0.5 select-none';
+        'veris-note-link font-semibold underline cursor-pointer px-0.5 mx-0.5 transition active:scale-95 inline-flex items-center gap-0.5';
       linkSpan.setAttribute('data-note-id', targetNote.id);
       linkSpan.setAttribute('contenteditable', 'false');
       linkSpan.style.color = theme.accent;
@@ -515,7 +524,7 @@ export const NoteEditor: React.FC = () => {
       const afterText = text.slice(offset);
 
       textNode.textContent = beforeText;
-      const spaceNode = document.createTextNode('\u00A0' + afterText);
+      const spaceNode = document.createTextNode(' ' + afterText);
 
       if (textNode.nextSibling) {
         textNode.parentNode?.insertBefore(linkSpan, textNode.nextSibling);
@@ -981,6 +990,7 @@ export const NoteEditor: React.FC = () => {
     const noteLinks = editorRef.current.querySelectorAll('.veris-note-link, [data-note-id]');
     noteLinks.forEach(el => {
       el.setAttribute('contenteditable', 'false');
+      el.classList.remove('select-none');
       (el as HTMLElement).style.cursor = 'pointer';
       (el as HTMLElement).style.color = theme.accent;
       (el as HTMLElement).style.backgroundColor = 'transparent';
@@ -990,6 +1000,7 @@ export const NoteEditor: React.FC = () => {
     const blockLinks = editorRef.current.querySelectorAll('.veris-block-link, [data-block-id]');
     blockLinks.forEach(el => {
       el.setAttribute('contenteditable', 'false');
+      el.classList.remove('select-none');
       (el as HTMLElement).style.cursor = 'pointer';
       (el as HTMLElement).style.color = theme.accent;
       (el as HTMLElement).style.backgroundColor = 'transparent';
@@ -1328,8 +1339,31 @@ export const NoteEditor: React.FC = () => {
     };
 
     window.addEventListener('veris-apply-font' as any, handleApplyFontEvent);
+
+    const handleApplyListEvent = (e: any) => {
+      const listType: ListType = e.detail?.listType;
+      if (!listType || !editorRef.current || !note) return;
+
+      editorRef.current.focus();
+
+      // If selection was lost or collapsed, attempt to restore last saved range
+      const sel = window.getSelection();
+      if ((!sel || sel.rangeCount === 0) && lastSavedRangeRef.current) {
+        try {
+          sel?.removeAllRanges();
+          sel?.addRange(lastSavedRangeRef.current);
+        } catch {}
+      }
+
+      applyListFormat(listType, () => {
+        handleEditorInput();
+      });
+    };
+
+    window.addEventListener('veris-apply-list' as any, handleApplyListEvent);
     return () => {
       window.removeEventListener('veris-apply-font' as any, handleApplyFontEvent);
+      window.removeEventListener('veris-apply-list' as any, handleApplyListEvent);
     };
   }, [note, updateNote, handleEditorInput]);
 
@@ -1546,6 +1580,15 @@ export const NoteEditor: React.FC = () => {
     const onNativeBeforeInput = (e: Event) => {
       if (e.defaultPrevented) return;
       const inputEvent = e as InputEvent;
+
+      if (inputEvent.inputType && inputEvent.inputType.startsWith('delete')) {
+        if (handleListBackspace(editor)) {
+          inputEvent.preventDefault();
+          handleEditorInput();
+          return;
+        }
+      }
+
       if (!quickSettings.oneTimeFormatting) return;
       if (inputEvent.inputType === 'insertText' && inputEvent.data) {
         const handled = handleOneTimeFormattingInsert(inputEvent.data);
@@ -1607,6 +1650,27 @@ export const NoteEditor: React.FC = () => {
       if (e.key === 'Escape') {
         e.preventDefault();
         setMentionQuery(null);
+        return;
+      }
+    }
+
+    if (e.key === 'Backspace') {
+      if (editorRef.current && handleLinkDeletion(editorRef.current, 'backward')) {
+        e.preventDefault();
+        handleEditorInput();
+        return;
+      }
+      if (editorRef.current && handleListBackspace(editorRef.current)) {
+        e.preventDefault();
+        handleEditorInput();
+        return;
+      }
+    }
+
+    if (e.key === 'Delete') {
+      if (editorRef.current && handleLinkDeletion(editorRef.current, 'forward')) {
+        e.preventDefault();
+        handleEditorInput();
         return;
       }
     }
@@ -2128,10 +2192,29 @@ export const NoteEditor: React.FC = () => {
     return NOTE_PLACEHOLDERS[index];
   }, [note?.id]);
 
+  const noteContentRaw = note?.content || '';
+  const hasStructuralContent =
+    noteContentRaw.includes('<ol') ||
+    noteContentRaw.includes('<ul') ||
+    noteContentRaw.includes('<li') ||
+    noteContentRaw.includes('<table') ||
+    noteContentRaw.includes('<blockquote') ||
+    noteContentRaw.includes('<pre') ||
+    noteContentRaw.includes('<hr') ||
+    noteContentRaw.includes('<img') ||
+    noteContentRaw.includes('data-attachment-id') ||
+    noteContentRaw.includes('veris-block-link') ||
+    noteContentRaw.includes('veris-note-link') ||
+    Boolean(
+      editorRef.current &&
+        editorRef.current.querySelector(
+          'ol, ul, li, table, blockquote, pre, hr, img, [data-attachment-id], .veris-block-link, .veris-note-link'
+        )
+    );
+
   const isContentEmpty =
-    stripHtmlTags(note.content || '').trim().length === 0 &&
-    !note.content?.includes('<img') &&
-    !note.content?.includes('data-attachment-id');
+    !hasStructuralContent &&
+    stripHtmlTags(noteContentRaw).trim().length === 0;
 
   return (
     <div

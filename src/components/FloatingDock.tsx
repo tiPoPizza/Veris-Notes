@@ -11,6 +11,9 @@ import {
   Settings,
   Type,
   Maximize2,
+  List,
+  ChevronRight,
+  ArrowLeft,
 } from 'lucide-react';
 import { hexToRgba, isLightColor } from '../themes';
 import { NoteAttachment } from '../types';
@@ -38,9 +41,16 @@ export const FloatingDock: React.FC = () => {
   } = useApp();
 
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState<boolean>(false);
+  const [isListSubmenuOpen, setIsListSubmenuOpen] = useState<boolean>(false);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState<boolean>(false);
   const [isFontModalOpen, setIsFontModalOpen] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleApplyList = (listType: 'number' | 'bullet' | 'alpha') => {
+    setIsMoreMenuOpen(false);
+    setIsListSubmenuOpen(false);
+    window.dispatchEvent(new CustomEvent('veris-apply-list', { detail: { listType } }));
+  };
 
   if (viewMode !== 'editor' || isFocusMode) return null;
 
@@ -179,7 +189,7 @@ export const FloatingDock: React.FC = () => {
         {/* Sub-menu Popup above dock */}
         {isMoreMenuOpen && (
           <div
-            className="pointer-events-auto mb-2 rounded-2xl p-1 shadow-2xl border backdrop-blur-2xl animate-fadeIn flex flex-col gap-0.5 min-w-[155px]"
+            className="pointer-events-auto mb-2 rounded-2xl p-1 shadow-2xl border backdrop-blur-2xl animate-fadeIn flex flex-col gap-0.5 min-w-[165px]"
             style={{
               backgroundColor: popupBg,
               borderColor: popupBorder,
@@ -187,54 +197,113 @@ export const FloatingDock: React.FC = () => {
               boxShadow: `0 12px 30px ${isLight ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.5)'}`,
             }}
           >
-            {/* 1. Attach file button */}
-            <button
-              onClick={handleTriggerFileSelect}
-              className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
-              style={{ color: theme.text }}
-            >
-              <Paperclip size={16} style={{ color: theme.accent }} />
-              <span>Вложить файл</span>
-            </button>
+            {isListSubmenuOpen ? (
+              <>
+                {/* Back button to main actions */}
+                <button
+                  onClick={() => setIsListSubmenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer opacity-80 hover:opacity-100 mb-0.5"
+                  style={{ color: theme.text }}
+                >
+                  <ArrowLeft size={14} style={{ color: theme.accent }} />
+                  <span>Назад</span>
+                </button>
 
-            {/* 2. Search button */}
-            <button
-              onClick={() => {
-                setIsMoreMenuOpen(false);
-                setIsNoteSearchOpen(true);
-              }}
-              className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
-              style={{ color: theme.text }}
-            >
-              <Search size={16} style={{ color: theme.accent }} />
-              <span>Поиск</span>
-            </button>
+                {/* 1. Numbers */}
+                <button
+                  onClick={() => handleApplyList('number')}
+                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
+                  style={{ color: theme.text }}
+                >
+                  <span className="font-mono text-xs font-black w-4 text-center" style={{ color: theme.accent }}>1.</span>
+                  <span>Числа (1, 2, 3)</span>
+                </button>
 
-            {/* 3. Audio dictation button */}
-            <button
-              onClick={() => {
-                setIsMoreMenuOpen(false);
-                setIsAudioModalOpen(true);
-              }}
-              className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
-              style={{ color: theme.text }}
-            >
-              <Mic size={16} style={{ color: theme.accent }} />
-              <span>Аудио</span>
-            </button>
+                {/* 2. Bullets */}
+                <button
+                  onClick={() => handleApplyList('bullet')}
+                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
+                  style={{ color: theme.text }}
+                >
+                  <span className="text-sm leading-none w-4 text-center" style={{ color: theme.accent }}>●</span>
+                  <span>Буллиты (•)</span>
+                </button>
 
-            {/* 3. Font selection button (Вложить файл —> аудио —> шрифт) */}
-            <button
-              onClick={() => {
-                setIsMoreMenuOpen(false);
-                setIsFontModalOpen(true);
-              }}
-              className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
-              style={{ color: theme.text }}
-            >
-              <Type size={16} style={{ color: theme.accent }} />
-              <span>Шрифт</span>
-            </button>
+                {/* 3. Letters */}
+                <button
+                  onClick={() => handleApplyList('alpha')}
+                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
+                  style={{ color: theme.text }}
+                >
+                  <span className="font-mono text-xs font-black w-4 text-center" style={{ color: theme.accent }}>a.</span>
+                  <span>Буквы (a, b, c)</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {/* 1. Attach file button */}
+                <button
+                  onClick={handleTriggerFileSelect}
+                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
+                  style={{ color: theme.text }}
+                >
+                  <Paperclip size={16} style={{ color: theme.accent }} />
+                  <span>Вложить файл</span>
+                </button>
+
+                {/* 2. Search button */}
+                <button
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    setIsNoteSearchOpen(true);
+                  }}
+                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
+                  style={{ color: theme.text }}
+                >
+                  <Search size={16} style={{ color: theme.accent }} />
+                  <span>Поиск</span>
+                </button>
+
+                {/* 3. Audio dictation button */}
+                <button
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    setIsAudioModalOpen(true);
+                  }}
+                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
+                  style={{ color: theme.text }}
+                >
+                  <Mic size={16} style={{ color: theme.accent }} />
+                  <span>Аудио</span>
+                </button>
+
+                {/* 4. Font selection button */}
+                <button
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    setIsFontModalOpen(true);
+                  }}
+                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
+                  style={{ color: theme.text }}
+                >
+                  <Type size={16} style={{ color: theme.accent }} />
+                  <span>Шрифт</span>
+                </button>
+
+                {/* 5. Lists button */}
+                <button
+                  onClick={() => setIsListSubmenuOpen(true)}
+                  className="flex items-center justify-between gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/10 active:scale-98 transition text-left cursor-pointer whitespace-nowrap"
+                  style={{ color: theme.text }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <List size={16} style={{ color: theme.accent }} />
+                    <span>Списки</span>
+                  </div>
+                  <ChevronRight size={14} className="opacity-60" />
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -284,7 +353,10 @@ export const FloatingDock: React.FC = () => {
 
           {/* More / Sub-menu Toggle (3 dots) */}
           <button
-            onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+            onClick={() => {
+              setIsMoreMenuOpen(!isMoreMenuOpen);
+              setIsListSubmenuOpen(false);
+            }}
             className="p-2 rounded-xl transition cursor-pointer"
             style={{
               backgroundColor: isMoreMenuOpen ? hexToRgba(theme.accent, 0.22) : 'transparent',

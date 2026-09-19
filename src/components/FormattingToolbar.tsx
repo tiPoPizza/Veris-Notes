@@ -6,6 +6,8 @@ import {
   Heading,
   Quote,
   Code,
+  List,
+  ListOrdered,
   Highlighter,
   Baseline,
   Check,
@@ -16,6 +18,7 @@ import { useApp } from '../context/AppContext';
 import { hexToRgba, isLightColor } from '../themes';
 import { isColorLight } from '../utils/textUtils';
 import { FormattingToolbarButtonId, ALL_FORMATTING_TOOLBAR_BUTTONS, DEFAULT_FORMATTING_TOOLBAR_BUTTONS, DEFAULT_PASTEL_HIGHLIGHT_COLORS } from '../types';
+import { getActiveListType, applyListFormat, ListType } from '../utils/listFormatter';
 
 export const HIGHLIGHT_COLORS = DEFAULT_PASTEL_HIGHLIGHT_COLORS;
 
@@ -31,12 +34,13 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
   oneTimeFormatting,
 }) => {
   const { theme, quickSettings } = useApp();
-  const [activeSubmenu, setActiveSubmenu] = useState<'align' | 'heading' | 'color' | 'textColor' | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<'align' | 'heading' | 'color' | 'textColor' | 'list' | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const alignBtnRef = useRef<HTMLButtonElement>(null);
   const headingBtnRef = useRef<HTMLButtonElement>(null);
   const colorBtnRef = useRef<HTMLButtonElement>(null);
   const textColorBtnRef = useRef<HTMLButtonElement>(null);
+  const listBtnRef = useRef<HTMLButtonElement>(null);
 
   const [toolbarSize, setToolbarSize] = useState<{ width: number; height: number }>({
     width: 320,
@@ -379,6 +383,8 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
     isTextColorActive,
     activeTextColorHex,
   } = checkFormatState();
+
+  const activeListType = getActiveListType();
 
   // Helper to extract text nodes intersecting range
   const getTextNodesInRange = (range: Range): Text[] => {
@@ -749,7 +755,7 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
 
   const hasClipboard = isBtnEnabled('cut') || isBtnEnabled('copy');
   const hasInline = isBtnEnabled('bold') || isBtnEnabled('italic') || isBtnEnabled('underline');
-  const hasBlock = isBtnEnabled('align') || isBtnEnabled('heading') || isBtnEnabled('quote') || isBtnEnabled('code');
+  const hasBlock = isBtnEnabled('align') || isBtnEnabled('heading') || isBtnEnabled('quote') || isBtnEnabled('code') || isBtnEnabled('list');
   const hasColor = isBtnEnabled('color') || isBtnEnabled('textColor');
 
   if (!hasClipboard && !hasInline && !hasBlock && !hasColor) {
@@ -905,6 +911,27 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
             title="Код (повторное нажатие отменяет)"
           >
             <Code size={14} className="sm:w-[15px] sm:h-[15px]" />
+          </button>
+        )}
+
+        {/* List Submenu Button */}
+        {isBtnEnabled('list') && (
+          <button
+            ref={listBtnRef}
+            onClick={() => setActiveSubmenu(prev => (prev === 'list' ? null : 'list'))}
+            style={
+              activeSubmenu === 'list' || activeListType !== null
+                ? { color: theme.accent, backgroundColor: activeSubmenu === 'list' ? hexToRgba(menuText, 0.15) : theme.bg }
+                : { color: menuText }
+            }
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 transition cursor-pointer hover:opacity-90 active:scale-95 shadow-2xs"
+            title="Списки (Числа, Буллиты, Буквы)"
+          >
+            {activeListType === 'number' ? (
+              <ListOrdered size={14} className="sm:w-4 sm:h-4" />
+            ) : (
+              <List size={14} className="sm:w-4 sm:h-4" />
+            )}
           </button>
         )}
 
@@ -1126,6 +1153,82 @@ export const FormattingToolbar: React.FC<FormattingToolbarProps> = ({
           >
             <span>Обычный текст</span>
             {activeHeadingTag === 'p' && (
+              <Check size={16} strokeWidth={3} style={{ color: theme.accent }} />
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Submenu: Lists (Numbers, Bullets, Alpha) */}
+      {activeSubmenu === 'list' && isBtnEnabled('list') && (
+        <div
+          className="p-1.5 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fadeIn space-y-1 text-xs font-bold overflow-y-auto custom-scrollbar"
+          style={{
+            ...getSubmenuPlacementStyle(listBtnRef, 176, 160),
+            backgroundColor: menuBg,
+            borderColor: menuBorder,
+            color: menuText,
+          }}
+        >
+          {/* 1. Numbers */}
+          <button
+            onClick={() => {
+              applyListFormat('number', onApplyFormat);
+              setActiveSubmenu(null);
+            }}
+            style={{
+              backgroundColor: activeListType === 'number' ? theme.bg : 'transparent',
+              color: activeListType === 'number' ? theme.accent : menuText,
+            }}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl transition cursor-pointer text-left hover:opacity-90"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-black w-4 text-center">1.</span>
+              <span>Числа (1, 2, 3)</span>
+            </div>
+            {activeListType === 'number' && (
+              <Check size={16} strokeWidth={3} style={{ color: theme.accent }} />
+            )}
+          </button>
+
+          {/* 2. Bullets */}
+          <button
+            onClick={() => {
+              applyListFormat('bullet', onApplyFormat);
+              setActiveSubmenu(null);
+            }}
+            style={{
+              backgroundColor: activeListType === 'bullet' ? theme.bg : 'transparent',
+              color: activeListType === 'bullet' ? theme.accent : menuText,
+            }}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl transition cursor-pointer text-left hover:opacity-90"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base leading-none w-4 text-center">●</span>
+              <span>Буллиты (•)</span>
+            </div>
+            {activeListType === 'bullet' && (
+              <Check size={16} strokeWidth={3} style={{ color: theme.accent }} />
+            )}
+          </button>
+
+          {/* 3. Alpha */}
+          <button
+            onClick={() => {
+              applyListFormat('alpha', onApplyFormat);
+              setActiveSubmenu(null);
+            }}
+            style={{
+              backgroundColor: activeListType === 'alpha' ? theme.bg : 'transparent',
+              color: activeListType === 'alpha' ? theme.accent : menuText,
+            }}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl transition cursor-pointer text-left hover:opacity-90"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-black w-4 text-center">a.</span>
+              <span>Буквы (a, b, c)</span>
+            </div>
+            {activeListType === 'alpha' && (
               <Check size={16} strokeWidth={3} style={{ color: theme.accent }} />
             )}
           </button>

@@ -123,6 +123,7 @@ export type FormattingToolbarButtonId =
   | 'heading'
   | 'quote'
   | 'code'
+  | 'list'
   | 'color'
   | 'textColor';
 
@@ -141,6 +142,7 @@ export const DEFAULT_FORMATTING_TOOLBAR_BUTTONS: FormattingToolbarButtonId[] = [
 
 export const ALL_FORMATTING_TOOLBAR_BUTTONS: FormattingToolbarButtonId[] = [
   ...DEFAULT_FORMATTING_TOOLBAR_BUTTONS,
+  'list',
   'textColor',
 ];
 

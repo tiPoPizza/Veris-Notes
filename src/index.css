@@ -71,10 +71,29 @@ input, textarea, [contenteditable], .note-editor-content {
   margin-bottom: 0.5rem;
 }
 
+.note-editor-content ol[type="a"],
+.note-editor-content ol.list-alpha,
+.note-editor-content ol[data-list-type="alpha"],
+[contenteditable="true"] ol[type="a"],
+[contenteditable="true"] ol.list-alpha,
+[contenteditable="true"] ol[data-list-type="alpha"],
+.prose ol[type="a"],
+.prose ol.list-alpha,
+.prose ol[data-list-type="alpha"] {
+  list-style-type: lower-alpha;
+}
+
 .note-editor-content li,
 [contenteditable="true"] li {
   margin-top: 0.25rem;
   margin-bottom: 0.25rem;
+}
+
+.note-editor-content p,
+[contenteditable="true"] p {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  min-height: 1.5em;
 }
 
 .note-editor-content b,

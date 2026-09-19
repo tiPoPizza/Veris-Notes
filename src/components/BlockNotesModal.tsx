@@ -114,10 +114,7 @@ export const BlockNotesModal: React.FC<BlockNotesModalProps> = ({ blockId, onClo
           /* ================= MODE: Note Preview inside Block Modal ================= */
           <>
             {/* Header with "Back to Block Notes", Note Title and "Close directly to Editor" */}
-            <div
-              className="px-4 sm:px-5 py-3.5 border-b flex items-center justify-between shrink-0 gap-2"
-              style={{ borderColor: hexToRgba(theme.text, 0.1) }}
-            >
+            <div className="px-4 sm:px-5 py-3.5 flex items-center justify-between shrink-0 gap-2">
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <button
                   type="button"
@@ -134,16 +131,8 @@ export const BlockNotesModal: React.FC<BlockNotesModalProps> = ({ blockId, onClo
                   <span className="hidden xs:inline">К списку блока</span>
                 </button>
 
-                <div className="flex items-center gap-1.5 min-w-0 pl-1">
-                  <div
-                    className="p-1.5 rounded-lg flex items-center justify-center shrink-0"
-                    style={{
-                      backgroundColor: hexToRgba(theme.accent, 0.12),
-                      color: theme.accent,
-                    }}
-                  >
-                    <FileText size={14} />
-                  </div>
+                <div className="flex items-center gap-2 min-w-0 pl-1">
+                  <FileText size={18} style={{ color: theme.accent }} className="shrink-0" />
                   <span
                     className="font-bold text-sm sm:text-base truncate"
                     style={{
@@ -263,20 +252,9 @@ export const BlockNotesModal: React.FC<BlockNotesModalProps> = ({ blockId, onClo
           /* ================= MODE: Block Notes List ================= */
           <>
             {/* Header with Block Info and Close */}
-            <div
-              className="px-5 py-4 border-b flex items-center justify-between shrink-0"
-              style={{ borderColor: hexToRgba(theme.text, 0.1) }}
-            >
-              <div className="flex items-center gap-2.5 min-w-0 pr-3">
-                <div
-                  className="p-2.5 rounded-2xl flex items-center justify-center shrink-0 shadow-xs"
-                  style={{
-                    backgroundColor: hexToRgba(theme.accent, 0.15),
-                    color: theme.accent,
-                  }}
-                >
-                  <Layers size={20} />
-                </div>
+            <div className="px-5 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3 min-w-0 pr-3">
+                <Layers size={22} style={{ color: theme.accent }} className="shrink-0" />
                 <div className="min-w-0">
                   <h3
                     className="font-bold text-base sm:text-lg truncate leading-tight"

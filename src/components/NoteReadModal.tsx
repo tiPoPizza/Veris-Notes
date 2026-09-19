@@ -37,20 +37,9 @@ export const NoteReadModal: React.FC<NoteReadModalProps> = ({ noteId, onClose })
         onClick={e => e.stopPropagation()}
       >
         {/* Clean Header with Title and Actions */}
-        <div
-          className="px-5 py-4 border-b flex items-center justify-between shrink-0"
-          style={{ borderColor: hexToRgba(theme.text, 0.1) }}
-        >
-          <div className="flex items-center gap-2.5 min-w-0 pr-4">
-            <div
-              className="p-2 rounded-2xl flex items-center justify-center shrink-0 shadow-xs"
-              style={{
-                backgroundColor: hexToRgba(theme.accent, 0.15),
-                color: theme.accent,
-              }}
-            >
-              <FileText size={18} />
-            </div>
+        <div className="px-5 py-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3 min-w-0 pr-4">
+            <FileText size={20} style={{ color: theme.accent }} className="shrink-0" />
             <h3
               className="font-bold text-sm sm:text-base truncate"
               style={{
